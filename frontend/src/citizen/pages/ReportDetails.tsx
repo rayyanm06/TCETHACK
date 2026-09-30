@@ -121,6 +121,7 @@ export const ReportDetails: React.FC = () => {
         </div>
       )}
 
+      {complaint.status==='RESOLVED' && <button className="w-full p-3 border border-clay/30 rounded-card text-sm text-clay" onClick={async()=>{const reason=window.prompt('What is still unresolved? Please explain in at least 10 characters.');if(!reason)return;try{await api.post(`/reports/${id}/reopen`,{reason});setData(await api.get(`/reports/${id}`));}catch(e:any){setError(e.message);}}}>Still unresolved? Reopen for review</button>}
       {/* Progress Timeline */}
       <div className="bg-surface rounded-card border border-line p-4 shadow-sm">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-2 mb-3">

@@ -1,5 +1,5 @@
-import {z} from 'zod';
-import {computePriority} from '../engines/priority.js';
+import { z } from 'zod';
+import { computePriority } from '../engines/priority.js';
 import { atomic } from '../utils/atomic.js';
 import { fail } from '../utils/validation.js';
 import { ENV } from '../config/env.js';
@@ -12,8 +12,24 @@ import { applyCongestionToMatrix } from '../engines/traffic.js';
 import { getDurationMatrix, getRouteGeometry } from '../adapters/routing/index.js';
 
 export async function previewRoute(input, userId) {
-  const {vehicleId,excludeEventIds,congestionZones} = z.object({vehicleId:z.string().regex(/^[a-f0-9]{24}$/i).optional(),excludeEventIds:z.array(z.string().regex(/^[a-f0-9]{24}$/i)).max(40).default([]),congestionZones:z.array(z.any()).max(10).default([])}).parse(input);
-  if (congestionZones.length && !ENV.DEMO_MODE) fail('Simulated traffic is disabled. Road routing uses standard travel estimates.', 'SIMULATION_DISABLED');
+  const { vehicleId, excludeEventIds, congestionZones } = z
+    .object({
+      vehicleId: z
+        .string()
+        .regex(/^[a-f0-9]{24}$/i)
+        .optional(),
+      excludeEventIds: z
+        .array(z.string().regex(/^[a-f0-9]{24}$/i))
+        .max(40)
+        .default([]),
+      congestionZones: z.array(z.any()).max(10).default([]),
+    })
+    .parse(input);
+  if (congestionZones.length && !ENV.DEMO_MODE)
+    fail(
+      'Simulated traffic is disabled. Road routing uses standard travel estimates.',
+      'SIMULATION_DISABLED',
+    );
   let vehicle;
   if (vehicleId) {
     vehicle = await Vehicle.findById(vehicleId);
@@ -36,9 +52,9 @@ export async function previewRoute(input, userId) {
   // Find candidate events: VERIFIED and not currently assigned to another active route
   const candidateEvents = await WasteEvent.find({
     status: 'VERIFIED',
-    category: {$nin: ['E_WASTE', 'UNKNOWN']},
-    requiresSpecialHandling: {$ne: true},
-    reportContext: {$ne: 'HOUSEHOLD'},
+    category: { $nin: ['E_WASTE', 'UNKNOWN'] },
+    requiresSpecialHandling: { $ne: true },
+    reportContext: { $ne: 'HOUSEHOLD' },
     $or: [{ assignedRouteId: null }, { assignedRouteId: { $exists: false } }],
   }).lean();
 
@@ -49,11 +65,20 @@ export async function previewRoute(input, userId) {
     throw err;
   }
 
-  if (candidateEvents.length > 40) fail('Maximum 40 waiting stops per planning area. Narrow the configured area.', 'TOO_MANY_STOPS');
+  if (candidateEvents.length > 40)
+    fail(
+      'Maximum 40 waiting stops per planning area. Narrow the configured area.',
+      'TOO_MANY_STOPS',
+    );
   // Format event locations
   const formattedEvents = candidateEvents.map((ev) => ({
     ...ev,
-    priority: computePriority({severity:ev.severity,firstReportedAt:ev.firstReportedAt,supportCount:ev.supportCount,sensitiveSite:ev.sensitiveSite}),
+    priority: computePriority({
+      severity: ev.severity,
+      firstReportedAt: ev.firstReportedAt,
+      supportCount: ev.verifiedSupportCount || 0,
+      sensitiveSite: ev.sensitiveSite,
+    }),
     id: ev._id.toString(),
     location: {
       lat: ev.location.coordinates[1],
@@ -61,7 +86,8 @@ export async function previewRoute(input, userId) {
     },
   }));
 
-  if (formattedEvents.length > 40) fail('Plan one service area at a time (maximum 40 waiting stops).', 'TOO_MANY_STOPS');
+  if (formattedEvents.length > 40)
+    fail('Plan one service area at a time (maximum 40 waiting stops).', 'TOO_MANY_STOPS');
   // Build matrix points: index 0 is depot, 1..N are events
   const points = [depotLoc, ...formattedEvents.map((e) => e.location)];
 
@@ -77,7 +103,8 @@ export async function previewRoute(input, userId) {
     durationMatrix = applyCongestionToMatrix(baseDurationMatrix, points, congestionZones);
   }
 
-  if (formattedEvents.length > 40) fail('Plan one service area at a time (maximum 40 waiting stops).', 'TOO_MANY_STOPS');
+  if (formattedEvents.length > 40)
+    fail('Plan one service area at a time (maximum 40 waiting stops).', 'TOO_MANY_STOPS');
   const plan = planCollectionRoute({
     depot: { name: vehicle.depot.name, location: depotLoc },
     vehicle: {
@@ -94,7 +121,12 @@ export async function previewRoute(input, userId) {
     excludeEventIds,
   });
 
-  if (!plan.stops.length) fail('No compatible stops fit this vehicle. Check categories and capacity.', 'NO_ELIGIBLE_STOPS', 409);
+  if (!plan.stops.length)
+    fail(
+      'No compatible stops fit this vehicle. Check categories and capacity.',
+      'NO_ELIGIBLE_STOPS',
+      409,
+    );
   // Build ordered waypoint list for Leaflet route geometry
   const orderedPoints = [depotLoc];
   for (const stop of plan.stops) {
@@ -144,7 +176,9 @@ export async function previewRoute(input, userId) {
   };
 }
 
-export function assignRoute(routeId, userId) { return atomic(() => assignRouteAtomic(routeId, userId)); }
+export function assignRoute(routeId, userId) {
+  return atomic(() => assignRouteAtomic(routeId, userId));
+}
 async function assignRouteAtomic(routeId, userId) {
   const route = await Route.findById(routeId);
   if (!route) {
@@ -163,11 +197,29 @@ async function assignRouteAtomic(routeId, userId) {
 
   const vehicle = await Vehicle.findById(route.vehicleId);
   if (!vehicle || !vehicle.isActive) fail('Vehicle is unavailable.', 'VEHICLE_UNAVAILABLE', 409);
-  if (await Route.exists({vehicleId: vehicle._id, status: {$in: ['ASSIGNED', 'IN_PROGRESS']}})) fail('This vehicle already has an active route.', 'VEHICLE_BUSY', 409);
-  const currentEvents = await WasteEvent.find({_id: {$in: route.stops.map(s => s.eventId)}});
-  if (!route.stops.length || currentEvents.length !== route.stops.length || currentEvents.some(e => e.status !== 'VERIFIED' || e.assignedRouteId || ['E_WASTE','UNKNOWN'].includes(e.category) || e.requiresSpecialHandling || e.reportContext === 'HOUSEHOLD' || !vehicle.acceptedCategories.includes(e.category) || e.estimatedWeightKg !== route.stops.find(s => String(s.eventId) === String(e._id)).weightKg)) fail('A stop changed after preview. Generate a fresh plan.', 'STALE_ROUTE', 409);
-  if(route.totals.durationMin > vehicle.maxRouteMinutes) fail('Driving budget changed. Generate a fresh plan.','STALE_ROUTE',409);
-  if (currentEvents.reduce((sum,e) => sum + e.estimatedWeightKg,0) > vehicle.capacityKg) fail('Vehicle capacity changed. Generate a fresh plan.', 'STALE_ROUTE', 409);
+  if (await Route.exists({ vehicleId: vehicle._id, status: { $in: ['ASSIGNED', 'IN_PROGRESS'] } }))
+    fail('This vehicle already has an active route.', 'VEHICLE_BUSY', 409);
+  const currentEvents = await WasteEvent.find({ _id: { $in: route.stops.map((s) => s.eventId) } });
+  if (
+    !route.stops.length ||
+    currentEvents.length !== route.stops.length ||
+    currentEvents.some(
+      (e) =>
+        e.status !== 'VERIFIED' ||
+        e.assignedRouteId ||
+        ['E_WASTE', 'UNKNOWN'].includes(e.category) ||
+        e.requiresSpecialHandling ||
+        e.reportContext === 'HOUSEHOLD' ||
+        !vehicle.acceptedCategories.includes(e.category) ||
+        e.estimatedWeightKg !==
+          route.stops.find((s) => String(s.eventId) === String(e._id)).weightKg,
+    )
+  )
+    fail('A stop changed after preview. Generate a fresh plan.', 'STALE_ROUTE', 409);
+  if (route.totals.durationMin > vehicle.maxRouteMinutes)
+    fail('Driving budget changed. Generate a fresh plan.', 'STALE_ROUTE', 409);
+  if (currentEvents.reduce((sum, e) => sum + e.estimatedWeightKg, 0) > vehicle.capacityKg)
+    fail('Vehicle capacity changed. Generate a fresh plan.', 'STALE_ROUTE', 409);
   // A write to the vehicle makes concurrent assignment attempts conflict transactionally.
   vehicle.set('updatedAt', new Date());
   await vehicle.save();
@@ -188,7 +240,7 @@ async function assignRouteAtomic(routeId, userId) {
   const stopEventIds = route.stops.map((s) => s.eventId);
   await WasteEvent.updateMany(
     { _id: { $in: stopEventIds } },
-    { status: 'SCHEDULED', assignedRouteId: route._id }
+    { status: 'SCHEDULED', assignedRouteId: route._id },
   );
 
   for (const evId of stopEventIds) {
@@ -210,8 +262,17 @@ async function assignRouteAtomic(routeId, userId) {
   };
 }
 
-export async function replanRoute(routeId, { congestionZones = [], reason = 'Replanned remaining stops' }, userId) {
-  if (!ENV.DEMO_MODE) fail('Replanning is disabled pending live dispatch integration. Complete the assigned route.', 'REPLAN_UNAVAILABLE', 409);
+export async function replanRoute(
+  routeId,
+  { congestionZones = [], reason = 'Replanned remaining stops' },
+  userId,
+) {
+  if (!ENV.DEMO_MODE)
+    fail(
+      'Replanning is disabled pending live dispatch integration. Complete the assigned route.',
+      'REPLAN_UNAVAILABLE',
+      409,
+    );
   const route = await Route.findById(routeId);
   if (!route) {
     const err = new Error('Route not found.');
@@ -271,7 +332,10 @@ export async function replanRoute(routeId, { congestionZones = [], reason = 'Rep
 
   // If no pending stops, nothing to replan
   if (formattedPending.length === 0) {
-    return { route, delta: { durationBeforeMin, durationAfterMin: durationBeforeMin, reordered: [] } };
+    return {
+      route,
+      delta: { durationBeforeMin, durationAfterMin: durationBeforeMin, reordered: [] },
+    };
   }
 
   // Build matrix from startLocation through pending events
@@ -381,7 +445,19 @@ export async function getActiveRoutes() {
     .populate('vehicleId')
     .sort({ updatedAt: -1 })
     .lean();
-  return { items: routes.filter(r => r.vehicleId).map(r => ({...r, id: String(r._id), vehicle: {id: String(r.vehicleId._id), name: r.vehicleId.name, capacityKg: r.vehicleId.capacityKg}})) };
+  return {
+    items: routes
+      .filter((r) => r.vehicleId)
+      .map((r) => ({
+        ...r,
+        id: String(r._id),
+        vehicle: {
+          id: String(r.vehicleId._id),
+          name: r.vehicleId.name,
+          capacityKg: r.vehicleId.capacityKg,
+        },
+      })),
+  };
 }
 
 export async function getRouteById(routeId) {
@@ -392,7 +468,19 @@ export async function getRouteById(routeId) {
     err.code = 'NOT_FOUND';
     throw err;
   }
-  return { route: {...route, id: String(route._id), vehicle: route.vehicleId ? {id: String(route.vehicleId._id), name: route.vehicleId.name, capacityKg: route.vehicleId.capacityKg} : null} };
+  return {
+    route: {
+      ...route,
+      id: String(route._id),
+      vehicle: route.vehicleId
+        ? {
+            id: String(route.vehicleId._id),
+            name: route.vehicleId.name,
+            capacityKg: route.vehicleId.capacityKg,
+          }
+        : null,
+    },
+  };
 }
 
 export async function getVehicles() {

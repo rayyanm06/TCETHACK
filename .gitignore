@@ -39,3 +39,6 @@ Thumbs.db
 
 # Deployments
 .vercel/
+
+# Browser test artifacts
+backend/test-results/

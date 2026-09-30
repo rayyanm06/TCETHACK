@@ -43,10 +43,11 @@ export const Login: React.FC = () => {
           <span className="font-serif text-3xl font-bold tracking-tight text-ink">CivicClean</span>
         </div>
         <p className="mt-2 text-center text-xs text-ink-3 uppercase tracking-wider font-semibold">
-          Smart Waste Reporting & Municipal Collection Planning
+          Waste Reporting & Collection Planning
         </p>
       </div>
 
+      <p className="text-center text-xs text-ink-3 mt-3">Independent pilot · Not a government service</p>
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-surface py-8 px-6 shadow-sm border border-line rounded-card sm:px-10 survey-corner">
           {error && (
@@ -59,10 +60,11 @@ export const Login: React.FC = () => {
           <form className="space-y-4" onSubmit={handleSubmit}>
             {isRegister && (
               <div>
-                <label className="block text-xs font-semibold text-ink-2 uppercase tracking-wider mb-1">
+                <label htmlFor="name" className="block text-xs font-semibold text-ink-2 uppercase tracking-wider mb-1">
                   Full Name
                 </label>
                 <input
+                  id="name"
                   type="text"
                   required
                   value={name}
@@ -74,10 +76,11 @@ export const Login: React.FC = () => {
             )}
 
             <div>
-              <label className="block text-xs font-semibold text-ink-2 uppercase tracking-wider mb-1">
+              <label htmlFor="email" className="block text-xs font-semibold text-ink-2 uppercase tracking-wider mb-1">
                 Email Address
               </label>
               <input
+                id="email"
                 type="email"
                 required
                 value={email}
@@ -88,10 +91,11 @@ export const Login: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-ink-2 uppercase tracking-wider mb-1">
+              <label htmlFor="password" className="block text-xs font-semibold text-ink-2 uppercase tracking-wider mb-1">
                 Password
               </label>
               <input
+                id="password"
                 type="password"
                 minLength={isRegister ? 10 : undefined}
                 maxLength={72}

@@ -13,11 +13,18 @@ import { classifyImage } from '../adapters/vision/index.js';
 import { signUploadToken, verifyUploadToken } from '../utils/token.js';
 import { findDuplicateCandidates } from '../engines/duplicates.js';
 import { computePriority } from '../engines/priority.js';
-import { calculateSupportCredits, CREDIT_VALUES, TRANSACTION_STATUSES, TRANSACTION_TYPES } from '../engines/impact.js';
+import {
+  calculateSupportCredits,
+  CREDIT_VALUES,
+  TRANSACTION_STATUSES,
+  TRANSACTION_TYPES,
+} from '../engines/impact.js';
 import { isInsideBoundingBox, haversineDistance } from '../engines/geo.js';
 import { THRESHOLDS } from '../config/thresholds.js';
 
-export async function classifyUploadedPhoto(buffer, mime, userId) { return storeEvidence(buffer, mime, userId, 'REPORT'); }
+export async function classifyUploadedPhoto(buffer, mime, userId) {
+  return storeEvidence(buffer, mime, userId, 'REPORT');
+}
 
 export async function findNearbyCandidates(lat, lng, category) {
   const coord = coordinatesSchema.parse({ lat: Number(lat), lng: Number(lng) });
@@ -29,11 +36,15 @@ export async function findNearbyCandidates(lat, lng, category) {
   }
 
   const activeEvents = await WasteEvent.find({
-    location: {$geoWithin: {$centerSphere:[[coord.lng,coord.lat],THRESHOLDS.DUP_RADIUS_M/6371000]}},
-    firstReportedAt: {$gte:new Date(Date.now()-THRESHOLDS.DUP_WINDOW_DAYS*86400000)},
-    reportContext: {$ne: 'HOUSEHOLD'},
+    location: {
+      $geoWithin: { $centerSphere: [[coord.lng, coord.lat], THRESHOLDS.DUP_RADIUS_M / 6371000] },
+    },
+    firstReportedAt: { $gte: new Date(Date.now() - THRESHOLDS.DUP_WINDOW_DAYS * 86400000) },
+    reportContext: { $ne: 'HOUSEHOLD' },
     status: { $in: ['SUBMITTED', 'VERIFIED', 'SCHEDULED'] },
-  }).populate('primaryReportId', 'imageUrl').lean();
+  })
+    .populate('primaryReportId', 'imageUrl')
+    .lean();
 
   for (const event of activeEvents) event.photoUrl = event.primaryReportId?.imageUrl;
   const candidates = findDuplicateCandidates({
@@ -51,14 +62,23 @@ export async function findNearbyCandidates(lat, lng, category) {
   };
 }
 
-export function createPrimaryReport(data, userId) { return atomic(() => createPrimaryReportAtomic(data, userId)); }
+export function createPrimaryReport(data, userId) {
+  return atomic(() => createPrimaryReportAtomic(data, userId));
+}
 async function createPrimaryReportAtomic(data, userId) {
   data = reportSchema.parse(data);
-  const prior = await Report.findOne({citizenId:userId,requestId:data.requestId});
-  if (prior) return {report:prior,complaint:await WasteEvent.findById(prior.complaintId),role:prior.role,impact:await ImpactTransaction.find({reportId:prior._id})};
+  const prior = await Report.findOne({ citizenId: userId, requestId: data.requestId });
+  if (prior)
+    return {
+      report: prior,
+      complaint: await WasteEvent.findById(prior.complaintId),
+      role: prior.role,
+      impact: await ImpactTransaction.find({ reportId: prior._id }),
+    };
   const evidence = await readEvidence(data.uploadToken, userId, 'REPORT', data.requestId);
-  data = {...data, ...evidence};
-  if (data.reportContext === 'HOUSEHOLD' && (!data.itemDescription || !data.itemCount)) fail('Describe the items and quantity for household disposal.');
+  data = { ...data, ...evidence };
+  if (data.reportContext === 'HOUSEHOLD' && (!data.itemDescription || !data.itemCount))
+    fail('Describe the items and quantity for household disposal.');
   const {
     requestId,
     uploadToken,
@@ -99,7 +119,7 @@ async function createPrimaryReportAtomic(data, userId) {
   }
 
   // 3. Verify coordinates inside service area
-  const coord = coordinatesSchema.parse({lat: location?.lat, lng: location?.lng});
+  const coord = coordinatesSchema.parse({ lat: location?.lat, lng: location?.lng });
   if (!isInsideBoundingBox(coord, THRESHOLDS.SERVICE_AREA_BBOX)) {
     const err = new Error('This location is outside the current service area.');
     err.status = 400;
@@ -131,10 +151,7 @@ async function createPrimaryReportAtomic(data, userId) {
   // 6. Generate next sequential event code (WE-XXXX)
   const code = `WE-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
 
-  const categoryCorrected =
-    ai?.status === 'OK' &&
-    ai?.category &&
-    ai?.category !== citizenCategory;
+  const categoryCorrected = ai?.status === 'OK' && ai?.category && ai?.category !== citizenCategory;
 
   // 7. Create WasteEvent
   const event = await WasteEvent.create({
@@ -236,15 +253,23 @@ async function createPrimaryReportAtomic(data, userId) {
   };
 }
 
-export function supportExistingEvent(complaintId, data, userId) { return atomic(() => supportAtomic(complaintId, data, userId)); }
+export function supportExistingEvent(complaintId, data, userId) {
+  return atomic(() => supportAtomic(complaintId, data, userId));
+}
 async function supportAtomic(complaintId, data, userId) {
   data = reportSchema.parse(data);
-  const prior = await Report.findOne({citizenId:userId,requestId:data.requestId});
+  const prior = await Report.findOne({ citizenId: userId, requestId: data.requestId });
   if (prior) {
-    if(String(prior.complaintId)!==String(complaintId)) fail('This request ID was already used for another report.','IDEMPOTENCY_CONFLICT',409);
-    return {report:prior,complaint:await WasteEvent.findById(prior.complaintId),role:prior.role,impact:await ImpactTransaction.find({reportId:prior._id})};
+    if (String(prior.complaintId) !== String(complaintId))
+      fail('This request ID was already used for another report.', 'IDEMPOTENCY_CONFLICT', 409);
+    return {
+      report: prior,
+      complaint: await WasteEvent.findById(prior.complaintId),
+      role: prior.role,
+      impact: await ImpactTransaction.find({ reportId: prior._id }),
+    };
   }
-  data = {...data, ...await readEvidence(data.uploadToken, userId, 'REPORT', data.requestId)};
+  data = { ...data, ...(await readEvidence(data.uploadToken, userId, 'REPORT', data.requestId)) };
   const {
     uploadToken,
     imageUrl,
@@ -283,9 +308,16 @@ async function supportAtomic(complaintId, data, userId) {
     throw err;
   }
 
-  if (event.reportContext === 'HOUSEHOLD' || data.reportContext === 'HOUSEHOLD') fail('Household requests cannot be supported publicly.', 'PRIVATE_REQUEST', 403);
-  if(data.requiresSpecialHandling && event.status === 'SCHEDULED') fail('This new hazard needs a separate specialist report. Choose Different waste to alert the operator.', 'HAZARD_REVIEW_REQUIRED',409);
-  if (!areCategoriesCompatible(citizenCategory, event.category)) fail('The categories do not describe the same incident.');
+  if (event.reportContext === 'HOUSEHOLD' || data.reportContext === 'HOUSEHOLD')
+    fail('Household requests cannot be supported publicly.', 'PRIVATE_REQUEST', 403);
+  if (data.requiresSpecialHandling && event.status === 'SCHEDULED')
+    fail(
+      'This new hazard needs a separate specialist report. Choose Different waste to alert the operator.',
+      'HAZARD_REVIEW_REQUIRED',
+      409,
+    );
+  if (!areCategoriesCompatible(citizenCategory, event.category))
+    fail('The categories do not describe the same incident.');
   // 3. Check if user already contributed
   const existingReport = await Report.findOne({ citizenId: userId, complaintId });
   if (existingReport) {
@@ -296,11 +328,13 @@ async function supportAtomic(complaintId, data, userId) {
   }
 
   // 4. Verify distance from event <= radius
-  const coord = coordinatesSchema.parse({lat: location?.lat, lng: location?.lng});
+  const coord = coordinatesSchema.parse({ lat: location?.lat, lng: location?.lng });
   const eventCoord = { lat: event.location.coordinates[1], lng: event.location.coordinates[0] };
   const distanceM = haversineDistance(coord, eventCoord);
   if (distanceM > THRESHOLDS.DUP_RADIUS_M) {
-    const err = new Error(`Supporting report location is too far from existing event (${Math.round(distanceM)}m).`);
+    const err = new Error(
+      `Supporting report location is too far from existing event (${Math.round(distanceM)}m).`,
+    );
     err.status = 400;
     err.code = 'TOO_FAR';
     throw err;
@@ -343,7 +377,7 @@ async function supportAtomic(complaintId, data, userId) {
 
   // 7. Update event support count
   event.supportCount += 1;
-  if(data.requiresSpecialHandling) event.requiresSpecialHandling = true;
+  if (data.requiresSpecialHandling) event.requiresSpecialHandling = true;
   event.lastReportedAt = new Date();
 
   // If already verified or scheduled, recompute priority
@@ -351,7 +385,7 @@ async function supportAtomic(complaintId, data, userId) {
     const priorityResult = computePriority({
       severity: event.severity,
       firstReportedAt: event.firstReportedAt,
-      supportCount: event.supportCount,
+      supportCount: event.verifiedSupportCount || 0,
       sensitiveSite: event.sensitiveSite,
     });
     event.priority = {
@@ -456,15 +490,61 @@ export async function getReportDetails(reportId, userId) {
   return {
     report,
     complaint,
-    handling: handlingFor(complaint.category, complaint.requiresSpecialHandling, complaint.reportContext),
+    handling: handlingFor(
+      complaint.category,
+      complaint.requiresSpecialHandling,
+      complaint.reportContext,
+    ),
     timeline,
-    closure: complaint.status === 'RESOLVED'
-      ? {
-          photoUrl: complaint.closurePhotoUrl,
-          note: complaint.closureNote,
-          resolvedAt: complaint.resolvedAt,
-        }
-      : null,
+    closure:
+      complaint.status === 'RESOLVED'
+        ? {
+            photoUrl: complaint.closurePhotoUrl,
+            note: complaint.closureNote,
+            resolvedAt: complaint.resolvedAt,
+          }
+        : null,
     impact,
   };
+}
+
+export function reopenReport(reportId, data, userId) {
+  return atomic(async () => {
+    const reason = typeof data.reason === 'string' ? data.reason.trim() : '';
+    if (reason.length < 10 || reason.length > 500)
+      fail('Explain the unresolved issue in 10–500 characters.');
+    const report = await Report.findOne({ _id: reportId, citizenId: userId, state: 'ACTIVE' });
+    if (!report) fail('Report not found.', 'NOT_FOUND', 404);
+    const event = await WasteEvent.findById(report.complaintId);
+    if (!event || event.status !== 'RESOLVED')
+      fail('Only a resolved request can be reopened.', 'INVALID_TRANSITION', 409);
+    await StatusEvent.create({
+      entityType: 'COMPLAINT',
+      entityId: event._id,
+      from: 'RESOLVED',
+      to: 'SUBMITTED',
+      actorId: userId,
+      actorRole: 'CITIZEN',
+      note: `Reopened for review: ${reason}`,
+      meta: { previousClosurePhotoUrl: event.closurePhotoUrl, previousHandoff: event.handoff },
+    });
+    event.status = 'SUBMITTED';
+    event.assignedRouteId = undefined;
+    event.resolvedAt = undefined;
+    event.resolvedBy = undefined;
+    event.verifiedAt = undefined;
+    event.handoff = undefined;
+    await event.save();
+    await ImpactTransaction.updateMany(
+      { complaintId: event._id, type: 'RESOLUTION_BONUS', status: 'VERIFIED' },
+      {
+        $set: {
+          status: 'REVOKED',
+          closedAt: new Date(),
+          reason: 'Completion disputed; request reopened for review',
+        },
+      },
+    );
+    return { event };
+  });
 }

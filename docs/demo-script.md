@@ -1,3 +1,5 @@
+> Historical prototype document. For the current category-aware pilot, use [DEPLOYMENT.md](DEPLOYMENT.md) and [EVALUATION-PLAYBOOK.md](EVALUATION-PLAYBOOK.md). Do not reuse demo claims/data for the live evaluation.
+
 # CivicClean — 4-Minute Demo Script & Rehearsal Guide
 
 **Hackathon:** HackConquest Aether 2026 · **PS03:** Smart Waste Management System  

@@ -7,6 +7,7 @@ import {
   updateOperatorEvent,
   resolveOperatorEvent,
   uploadClosurePhoto,
+  reviewSupportingEvidence,
 } from '../services/eventService.js';
 
 const upload = multer({
@@ -43,6 +44,8 @@ router.patch('/complaints/:id', ...operatorAuth, async (req, res, next) => {
     next(err);
   }
 });
+
+router.patch('/complaints/:id/evidence', ...operatorAuth, async(req,res,next)=>{try{res.json(await reviewSupportingEvidence(req.params.id,req.body,req.user.id));}catch(err){next(err);}});
 
 router.patch('/complaints/:id/status', ...operatorAuth, async (req, res, next) => {
   try {

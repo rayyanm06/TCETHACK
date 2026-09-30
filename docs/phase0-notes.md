@@ -1,3 +1,5 @@
+> Historical prototype document. For the current category-aware pilot, use [DEPLOYMENT.md](DEPLOYMENT.md) and [EVALUATION-PLAYBOOK.md](EVALUATION-PLAYBOOK.md). Do not reuse demo claims/data for the live evaluation.
+
 # Phase 0 Inspection & Decisions — CivicClean
 
 **Date:** 2026-09-30  

@@ -39,6 +39,7 @@ const wasteEventSchema = new mongoose.Schema(
       default: 'NONE',
     },
     estimatedWeightKg: { type: Number },
+    verifiedSupportCount: {type:Number,default:0},
     supportCount: { type: Number, required: true, default: 0 },
     firstReportedAt: { type: Date, required: true, default: Date.now },
     lastReportedAt: { type: Date, required: true, default: Date.now },

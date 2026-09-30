@@ -9,6 +9,7 @@ import {
   supportExistingEvent,
   getCitizenReports,
   getReportDetails,
+  reopenReport,
 } from '../services/reportService.js';
 
 const upload = multer({
@@ -81,6 +82,8 @@ router.get('/reports/mine', authenticate, async (req, res, next) => {
     next(err);
   }
 });
+
+router.post('/reports/:id/reopen',authenticate,async(req,res,next)=>{try{res.json(await reopenReport(req.params.id,req.body,req.user.id));}catch(err){next(err);}});
 
 // GET /api/reports/:id
 router.get('/reports/:id', authenticate, async (req, res, next) => {

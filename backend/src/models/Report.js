@@ -46,6 +46,7 @@ const reportSchema = new mongoose.Schema(
       required: true,
       default: 'ACTIVE',
     },
+    evidenceReview: {type:String,enum:['PENDING','ACCEPTED','REJECTED'],default:'PENDING'},
     requestId: { type: String, required: true },
     isSeed: { type: Boolean, default: false },
   },

@@ -1,4 +1,4 @@
-import {useNavigate} from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import React, { useState, useEffect } from 'react';
 import { api } from '../../lib/api.ts';
 import { WasteEventSummary, PriorityTier, WasteCategory } from '../../types/api.ts';
@@ -26,12 +26,12 @@ interface EventDrawerProps {
 
 export const EventDrawer: React.FC<EventDrawerProps> = ({ eventId, onClose, onEventUpdated }) => {
   const navigate = useNavigate();
-  const [proof,setProof] = useState<any>(null);
-  const [uploading,setUploading] = useState(false);
-  const [facility,setFacility] = useState('');
-  const [reference,setReference] = useState('');
-  const [sourceUrl,setSourceUrl] = useState('');
-  const [special,setSpecial] = useState(false);
+  const [proof, setProof] = useState<any>(null);
+  const [uploading, setUploading] = useState(false);
+  const [facility, setFacility] = useState('');
+  const [reference, setReference] = useState('');
+  const [sourceUrl, setSourceUrl] = useState('');
+  const [special, setSpecial] = useState(false);
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -50,7 +50,11 @@ export const EventDrawer: React.FC<EventDrawerProps> = ({ eventId, onClose, onEv
   useEffect(() => {
     async function fetchEventDetails() {
       setLoading(true);
-      setProof(null);setClosureNote('');setFacility('');setReference('');setSourceUrl('');
+      setProof(null);
+      setClosureNote('');
+      setFacility('');
+      setReference('');
+      setSourceUrl('');
       setError(null);
       try {
         const res = await api.get<any>(`/complaints/${eventId}`);
@@ -119,7 +123,9 @@ export const EventDrawer: React.FC<EventDrawerProps> = ({ eventId, onClose, onEv
         to: 'RESOLVED',
         note: closureNote,
         closurePhoto: proof,
-        ...(data.requiresHandoff ? {handoff:{facilityName:facility,reference,sourceUrl}} : {}),
+        ...(data.requiresHandoff
+          ? { handoff: { facilityName: facility, reference, sourceUrl } }
+          : {}),
       });
       onEventUpdated();
       onClose();
@@ -177,11 +183,7 @@ export const EventDrawer: React.FC<EventDrawerProps> = ({ eventId, onClose, onEv
         {photos && photos.length > 0 && (
           <div className="space-y-2">
             <div className="rounded overflow-hidden border border-line aspect-[16/10] bg-ink/5">
-              <img
-                src={photos[0].url}
-                alt="Primary waste"
-                className="w-full h-full object-cover"
-              />
+              <img src={photos[0].url} alt="Primary waste" className="w-full h-full object-cover" />
             </div>
             {photos.length > 1 && (
               <div className="flex gap-2 overflow-x-auto pb-1">
@@ -211,7 +213,17 @@ export const EventDrawer: React.FC<EventDrawerProps> = ({ eventId, onClose, onEv
           </div>
         </div>
 
-        {data.handling && <div className="p-3 bg-plum-100 rounded border border-plum/20"><b>{data.handling.title}</b><p className="mt-1">{data.handling.message}</p>{event.reportContext === 'HOUSEHOLD' && <p className="mt-2 font-semibold">Private request · {event.itemCount} × {event.itemDescription}</p>}</div>}
+        {data.handling && (
+          <div className="p-3 bg-plum-100 rounded border border-plum/20">
+            <b>{data.handling.title}</b>
+            <p className="mt-1">{data.handling.message}</p>
+            {event.reportContext === 'HOUSEHOLD' && (
+              <p className="mt-2 font-semibold">
+                Private request · {event.itemCount} × {event.itemDescription}
+              </p>
+            )}
+          </div>
+        )}
         {/* 3. Classification & Citizen Correction Flag (§6.8) */}
         <div className="p-3 bg-surface-2 rounded border border-line space-y-1">
           <div className="flex items-center justify-between">
@@ -237,8 +249,28 @@ export const EventDrawer: React.FC<EventDrawerProps> = ({ eventId, onClose, onEv
               Operator Verification
             </span>
 
-            <label className="block">Confirmed category<select className="w-full p-2 border border-line mt-1" value={category} onChange={e=>setCategory(e.target.value as WasteCategory)}>{Object.entries(CATEGORY_DETAILS).map(([key,v])=><option key={key} value={key}>{v.label}</option>)}</select></label>
-            <label className="flex gap-2"><input type="checkbox" checked={special} onChange={e=>setSpecial(e.target.checked)}/>Requires specialist handling</label>
+            <label className="block">
+              Confirmed category
+              <select
+                className="w-full p-2 border border-line mt-1"
+                value={category}
+                onChange={(e) => setCategory(e.target.value as WasteCategory)}
+              >
+                {Object.entries(CATEGORY_DETAILS).map(([key, v]) => (
+                  <option key={key} value={key}>
+                    {v.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex gap-2">
+              <input
+                type="checkbox"
+                checked={special}
+                onChange={(e) => setSpecial(e.target.checked)}
+              />
+              Requires specialist handling
+            </label>
             {/* Severity S1 - S3 */}
             <div>
               <label className="block text-[11px] font-semibold text-ink mb-1">
@@ -275,11 +307,14 @@ export const EventDrawer: React.FC<EventDrawerProps> = ({ eventId, onClose, onEv
                 type="number"
                 value={estimatedWeightKg}
                 onChange={(e) => setEstimatedWeightKg(Number(e.target.value))}
-                min={0.1} step={0.1}
+                min={0.1}
+                step={0.1}
                 max={2000}
                 className="w-full px-2.5 py-1.5 rounded border border-line bg-surface text-ink font-mono font-medium"
               />
-              <span className="text-[10px] text-ink-3">Operator estimate for vehicle capacity allocation</span>
+              <span className="text-[10px] text-ink-3">
+                Operator estimate for vehicle capacity allocation
+              </span>
             </div>
 
             {/* Sensitive Site */}
@@ -317,10 +352,10 @@ export const EventDrawer: React.FC<EventDrawerProps> = ({ eventId, onClose, onEv
                 item.key === 'severity'
                   ? 'bg-clay'
                   : item.key === 'waiting_time'
-                  ? 'bg-ochre'
-                  : item.key === 'community'
-                  ? 'bg-lagoon'
-                  : 'bg-plum';
+                    ? 'bg-ochre'
+                    : item.key === 'community'
+                      ? 'bg-lagoon'
+                      : 'bg-plum';
               const widthPct = `${Math.max(4, item.points)}%`;
               return (
                 <div
@@ -355,6 +390,36 @@ export const EventDrawer: React.FC<EventDrawerProps> = ({ eventId, onClose, onEv
                     ({rep.role === 'PRIMARY' ? 'Primary' : 'Supporting'})
                   </span>
                 </div>
+                {rep.role === 'SUPPORTING' &&
+                  rep.evidenceReview === 'PENDING' &&
+                  ['VERIFIED', 'SCHEDULED'].includes(event.status) && (
+                    <div className="flex gap-2">
+                      {[true, false].map((accepted) => (
+                        <button
+                          key={String(accepted)}
+                          disabled={submitting}
+                          className="underline text-moss"
+                          onClick={async () => {
+                            setSubmitting(true);
+                            try {
+                              await api.patch(`/complaints/${eventId}/evidence`, {
+                                reportId: rep.id,
+                                accepted,
+                              });
+                              setData(await api.get(`/complaints/${eventId}`));
+                              onEventUpdated();
+                            } catch (e: any) {
+                              setError(e.message);
+                            } finally {
+                              setSubmitting(false);
+                            }
+                          }}
+                        >
+                          {accepted ? 'Accept' : 'Reject'}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 <span
                   className={`px-1.5 py-0.2 rounded font-bold text-[10px] ${
                     rep.creditState === 'VERIFIED'
@@ -382,9 +447,15 @@ export const EventDrawer: React.FC<EventDrawerProps> = ({ eventId, onClose, onEv
                 className="w-full h-32 rounded object-cover border border-moss/20"
               />
             )}
-            {event.handoff?.facilityName && <p>Received by {event.handoff.facilityName} · Reference {event.handoff.reference}</p>}
+            {event.handoff?.facilityName && (
+              <p>
+                Received by {event.handoff.facilityName} · Reference {event.handoff.reference}
+              </p>
+            )}
             {closure.note && <p className="text-[11px] text-ink-2 font-medium">{closure.note}</p>}
-            <p className="text-[10px] text-ink-3">Resolved on {new Date(closure.resolvedAt).toLocaleString('en-IN')}</p>
+            <p className="text-[10px] text-ink-3">
+              Resolved on {new Date(closure.resolvedAt).toLocaleString('en-IN')}
+            </p>
           </div>
         )}
 
@@ -392,10 +463,79 @@ export const EventDrawer: React.FC<EventDrawerProps> = ({ eventId, onClose, onEv
         {(isScheduled || (event.status === 'VERIFIED' && data.requiresHandoff)) && (
           <div className="p-3 bg-surface-2 rounded border border-line space-y-2">
             <span className="text-[11px] font-bold text-ink block">Record completion evidence</span>
-            <p>Upload the clearance photo or receiving-service receipt. Review the linked evidence before confirming.</p>
-            <label className="block">Completion photograph (required)<input type="file" accept="image/jpeg,image/png,image/webp" disabled={uploading||submitting} onChange={async e=>{const file=e.target.files?.[0];if(!file)return;setUploading(true);setProof(null);setError(null);try{const form=new FormData();form.append('image',file);setProof(await api.post('/uploads',form));}catch(err:any){setError(err.message);}finally{setUploading(false);}}}/></label>
-            {uploading && <p>Uploading evidence…</p>}{proof && <img src={proof.imageUrl} alt="Uploaded completion evidence" className="h-24 rounded"/>}
-            {data.requiresHandoff && <div className="space-y-2"><label className="block">Receiving facility / service<input className="w-full p-2 border border-line" value={facility} maxLength={150} onChange={e=>setFacility(e.target.value)}/></label><label className="block">Receipt or acceptance reference<input className="w-full p-2 border border-line" value={reference} maxLength={150} onChange={e=>setReference(e.target.value)}/></label><label className="block">Verified service source URL<input type="url" placeholder="https://…" className="w-full p-2 border border-line" value={sourceUrl} maxLength={500} onChange={e=>setSourceUrl(e.target.value)}/></label><p className="text-ink-3">Confirm current registration/eligibility and actual acceptance with the receiving service. This is an operator-recorded handoff, not an automatic booking.</p></div>}
+            <p>
+              Upload the clearance photo or receiving-service receipt. Review the linked evidence
+              before confirming.
+            </p>
+            <label className="block">
+              Completion photograph (required)
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                disabled={uploading || submitting}
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  setUploading(true);
+                  setProof(null);
+                  setError(null);
+                  try {
+                    const form = new FormData();
+                    form.append('image', file);
+                    setProof(await api.post('/uploads', form));
+                  } catch (err: any) {
+                    setError(err.message);
+                  } finally {
+                    setUploading(false);
+                  }
+                }}
+              />
+            </label>
+            {uploading && <p>Uploading evidence…</p>}
+            {proof && (
+              <img
+                src={proof.imageUrl}
+                alt="Uploaded completion evidence"
+                className="h-24 rounded"
+              />
+            )}
+            {data.requiresHandoff && (
+              <div className="space-y-2">
+                <label className="block">
+                  Receiving facility / service
+                  <input
+                    className="w-full p-2 border border-line"
+                    value={facility}
+                    maxLength={150}
+                    onChange={(e) => setFacility(e.target.value)}
+                  />
+                </label>
+                <label className="block">
+                  Receipt or acceptance reference
+                  <input
+                    className="w-full p-2 border border-line"
+                    value={reference}
+                    maxLength={150}
+                    onChange={(e) => setReference(e.target.value)}
+                  />
+                </label>
+                <label className="block">
+                  Verified service source URL
+                  <input
+                    type="url"
+                    placeholder="https://…"
+                    className="w-full p-2 border border-line"
+                    value={sourceUrl}
+                    maxLength={500}
+                    onChange={(e) => setSourceUrl(e.target.value)}
+                  />
+                </label>
+                <p className="text-ink-3">
+                  Confirm current registration/eligibility and actual acceptance with the receiving
+                  service. This is an operator-recorded handoff, not an automatic booking.
+                </p>
+              </div>
+            )}
             <input
               type="text"
               placeholder="Operator clearance note..."
@@ -404,7 +544,14 @@ export const EventDrawer: React.FC<EventDrawerProps> = ({ eventId, onClose, onEv
               className="w-full px-2.5 py-1.5 rounded border border-line bg-surface text-ink text-xs"
             />
             <button
-              disabled={submitting || uploading || !proof || closureNote.trim().length<10 || (data.requiresHandoff && (!facility.trim() || !reference.trim() || !sourceUrl.startsWith('https://')))}
+              disabled={
+                submitting ||
+                uploading ||
+                !proof ||
+                closureNote.trim().length < 10 ||
+                (data.requiresHandoff &&
+                  (!facility.trim() || !reference.trim() || !sourceUrl.startsWith('https://')))
+              }
               onClick={handleResolve}
               className="w-full py-2 bg-moss hover:bg-moss-700 text-surface font-semibold text-xs rounded shadow flex items-center justify-center gap-1.5"
             >
@@ -425,7 +572,7 @@ export const EventDrawer: React.FC<EventDrawerProps> = ({ eventId, onClose, onEv
               className="flex-1 py-2.5 bg-moss hover:bg-moss-700 text-surface font-semibold text-xs rounded shadow flex items-center justify-center gap-1.5"
             >
               <Check className="w-4 h-4" />
-              <span>Verify Event</span>
+              <span>Verify Event & Evidence</span>
             </button>
             <button
               disabled={submitting}

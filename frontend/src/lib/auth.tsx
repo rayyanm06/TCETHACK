@@ -19,11 +19,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
-    let active=true;
-    if(!token){setUser(null);setLoading(false);return;}
+    let active = true;
+    if (!token) {
+      setUser(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
-    api.get<{user:User}>('/auth/me').then(data=>{if(active){setUser(data.user);localStorage.setItem('civicclean_user',JSON.stringify(data.user));}}).catch(()=>{if(active){api.setToken(null);setToken(null);setUser(null);localStorage.removeItem('civicclean_user');}}).finally(()=>{if(active)setLoading(false);});
-    return ()=>{active=false;};
+    api
+      .get<{ user: User }>('/auth/me')
+      .then((data) => {
+        if (active) {
+          setUser(data.user);
+          localStorage.setItem('civicclean_user', JSON.stringify(data.user));
+        }
+      })
+      .catch(() => {
+        if (active) {
+          api.setToken(null);
+          setToken(null);
+          setUser(null);
+          localStorage.removeItem('civicclean_user');
+        }
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, [token]);
 
   const handleAuthSuccess = (data: AuthResponse) => {

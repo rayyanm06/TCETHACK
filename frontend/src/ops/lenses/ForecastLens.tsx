@@ -1,9 +1,106 @@
-import {useState,useEffect} from 'react';
-import {api} from '../../lib/api';
-import {ForecastCell} from '../../types/api';
-interface Props {onForecastDataChanged:(mode:'NOW'|'FORECAST',forecast:ForecastCell[],history:any[])=>void}
-export function ForecastLens({onForecastDataChanged}:Props) {
-  const [data,setData] = useState<any>(null), [error,setError] = useState(''), [week,setWeek] = useState<number| null>(null);
-  useEffect(()=>{api.get<any>('/analytics/hotspots').then(d=>{setData(d);onForecastDataChanged('FORECAST',d.forecast.cells,[]);}).catch(e=>setError(e.message));},[]);
-  return <aside className="absolute left-0 top-0 bottom-0 z-20 w-full sm:w-[360px] bg-surface/95 border-r border-line p-5 overflow-auto space-y-5"><h1 className="font-serif text-xl">Recorded activity & forecast</h1>{error&&<p role="alert" className="text-clay">{error}</p>}{!data&&!error&&<p>Loading real incident history…</p>}{data&&<><div className="bg-moss-100 p-4 rounded-card"><b className="text-2xl">{data.liveThisWeek.uniqueEvents}</b><p className="text-sm">Reviewed public incidents this week</p><p className="text-xs mt-2">{data.liveThisWeek.note}</p></div><h2 className="font-semibold">{data.label}</h2>{data.status==='INSUFFICIENT_HISTORY'?<div className="bg-surface-2 border border-line p-4 rounded-card space-y-3"><p className="text-sm">{data.note}</p><p className="text-xs font-semibold">{data.completeWeeks} of {data.requiredWeeks} complete weeks available</p><p className="text-xs">Keep collecting and reviewing real reports. The baseline will become available automatically.</p></div>:<><label className="block text-sm">View<select value={week??'forecast'} className="w-full border border-line p-2 mt-2" onChange={e=>{const w=e.target.value==='forecast'?null:Number(e.target.value);setWeek(w);onForecastDataChanged(w?'NOW':'FORECAST',w?[]:data.forecast.cells,w?data.weeks.find((v:any)=>v.weekIndex===w)?.cells||[]:[]);}}><option value="forecast">Next-week baseline</option>{data.weeks.map((w:any)=><option key={w.weekIndex} value={w.weekIndex}>Recorded week {w.weekIndex} · {w.totalUnique} incidents</option>)}</select></label><p className="text-xs">{data.forecast.method}. Dates: {new Date(data.periodStart).toLocaleDateString()}–{new Date(data.periodEnd).toLocaleDateString()}.</p>{data.forecast.cells.length?data.forecast.cells.slice(0,5).map((c:any)=><div key={c.cellId} className="border border-line p-3 rounded-card text-sm">Zone {c.cellId}<b className="block">{c.expected} expected incidents</b></div>):<p className="text-sm">No grid cells exceed the 1.5 expected-incident display threshold.</p>}<div className="border border-line rounded-card p-3 text-xs"><p>{data.evaluation.note}</p><p className="mt-2">Descriptive baseline, not a guarantee. Sparse reporting and changing participation affect estimates.</p></div></>}</>}</aside>;
+import { useState, useEffect } from 'react';
+import { api } from '../../lib/api';
+import { ForecastCell } from '../../types/api';
+interface Props {
+  onForecastDataChanged: (
+    mode: 'NOW' | 'FORECAST',
+    forecast: ForecastCell[],
+    history: any[],
+  ) => void;
+}
+export function ForecastLens({ onForecastDataChanged }: Props) {
+  const [data, setData] = useState<any>(null),
+    [error, setError] = useState(''),
+    [week, setWeek] = useState<number | null>(null);
+  useEffect(() => {
+    api
+      .get<any>('/analytics/hotspots')
+      .then((d) => {
+        setData(d);
+        onForecastDataChanged('FORECAST', d.forecast.cells, []);
+      })
+      .catch((e) => setError(e.message));
+  }, []);
+  return (
+    <aside className="absolute left-0 top-0 bottom-0 z-20 w-full sm:w-[360px] bg-surface/95 border-r border-line p-5 overflow-auto space-y-5">
+      <h1 className="font-serif text-xl">Recorded activity & forecast</h1>
+      {error && (
+        <p role="alert" className="text-clay">
+          {error}
+        </p>
+      )}
+      {!data && !error && <p>Loading real incident history…</p>}
+      {data && (
+        <>
+          <div className="bg-moss-100 p-4 rounded-card">
+            <b className="text-2xl">{data.liveThisWeek.uniqueEvents}</b>
+            <p className="text-sm">Reviewed public incidents this week</p>
+            <p className="text-xs mt-2">{data.liveThisWeek.note}</p>
+          </div>
+          <h2 className="font-semibold">{data.label}</h2>
+          {data.status === 'INSUFFICIENT_HISTORY' ? (
+            <div className="bg-surface-2 border border-line p-4 rounded-card space-y-3">
+              <p className="text-sm">{data.note}</p>
+              <p className="text-xs font-semibold">
+                {data.completeWeeks} of {data.requiredWeeks} complete weeks available
+              </p>
+              <p className="text-xs">
+                Keep collecting and reviewing real reports. The baseline will become available
+                automatically.
+              </p>
+            </div>
+          ) : (
+            <>
+              <label className="block text-sm">
+                View
+                <select
+                  value={week ?? 'forecast'}
+                  className="w-full border border-line p-2 mt-2"
+                  onChange={(e) => {
+                    const w = e.target.value === 'forecast' ? null : Number(e.target.value);
+                    setWeek(w);
+                    onForecastDataChanged(
+                      w ? 'NOW' : 'FORECAST',
+                      w ? [] : data.forecast.cells,
+                      w ? data.weeks.find((v: any) => v.weekIndex === w)?.cells || [] : [],
+                    );
+                  }}
+                >
+                  <option value="forecast">Next-week baseline</option>
+                  {data.weeks.map((w: any) => (
+                    <option key={w.weekIndex} value={w.weekIndex}>
+                      Recorded week {w.weekIndex} · {w.totalUnique} incidents
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p className="text-xs">
+                {data.forecast.method}. Dates: {new Date(data.periodStart).toLocaleDateString()}–
+                {new Date(data.periodEnd).toLocaleDateString()}.
+              </p>
+              {data.forecast.cells.length ? (
+                data.forecast.cells.slice(0, 5).map((c: any) => (
+                  <div key={c.cellId} className="border border-line p-3 rounded-card text-sm">
+                    Zone {c.cellId}
+                    <b className="block">{c.expected} expected incidents</b>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm">
+                  No grid cells exceed the 1.5 expected-incident display threshold.
+                </p>
+              )}
+              <div className="border border-line rounded-card p-3 text-xs">
+                <p>{data.evaluation.note}</p>
+                <p className="mt-2">
+                  Descriptive baseline, not a guarantee. Sparse reporting and changing participation
+                  affect estimates.
+                </p>
+              </div>
+            </>
+          )}
+        </>
+      )}
+    </aside>
+  );
 }

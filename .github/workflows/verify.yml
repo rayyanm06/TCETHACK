@@ -26,3 +26,13 @@ jobs:
         working-directory: frontend
       - run: npm run build
         working-directory: frontend
+      - run: npx playwright install --with-deps chromium
+        working-directory: backend
+      - run: npm run test:browser
+        working-directory: backend
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-check-screenshots
+          path: backend/test-results
+          if-no-files-found: ignore

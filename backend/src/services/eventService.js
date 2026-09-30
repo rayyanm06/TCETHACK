@@ -38,7 +38,7 @@ export async function getOperatorEvents(query = {}) {
       const computed = computePriority({
         severity: ev.severity,
         firstReportedAt: ev.firstReportedAt,
-        supportCount: ev.supportCount,
+        supportCount: ev.verifiedSupportCount || 0,
         sensitiveSite: ev.sensitiveSite,
         now,
       });
@@ -75,9 +75,11 @@ export async function getOperatorEvents(query = {}) {
   // Calculate ticker counts
   const totalReports = await Report.countDocuments();
   const totalEvents = await WasteEvent.countDocuments({ status: { $ne: 'REJECTED' } });
-  const activeRoutes = await Route.find({ status: { $in: ['ASSIGNED', 'IN_PROGRESS'] } }).populate('vehicleId').lean();
+  const activeRoutes = await Route.find({ status: { $in: ['ASSIGNED', 'IN_PROGRESS'] } })
+    .populate('vehicleId')
+    .lean();
   let plannedStops = 0;
-  for (const r of activeRoutes.filter(r => r.vehicleId)) {
+  for (const r of activeRoutes.filter((r) => r.vehicleId)) {
     plannedStops += (r.stops || []).filter((s) => s.state === 'PENDING').length;
   }
 
@@ -125,6 +127,7 @@ export async function getOperatorEventById(eventId) {
       createdAt: r.createdAt,
       imageUrl: r.imageUrl,
       category: r.citizenCategory,
+      evidenceReview: r.evidenceReview || 'PENDING',
       creditState: tx?.status || 'PENDING',
       credits: tx?.credits || 0,
     };
@@ -136,9 +139,7 @@ export async function getOperatorEventById(eventId) {
     caption: `${r.role === 'PRIMARY' ? 'Primary' : 'Supporting'} · by ${linkedReports.find((lr) => lr.id === r._id.toString())?.citizenDisplayName}`,
   }));
 
-  const timeline = await StatusEvent.find({ entityId: event._id })
-    .sort({ createdAt: 1 })
-    .lean();
+  const timeline = await StatusEvent.find({ entityId: event._id }).sort({ createdAt: 1 }).lean();
 
   // Priority reasoning
   let priorityObj = event.priority;
@@ -146,7 +147,7 @@ export async function getOperatorEventById(eventId) {
     priorityObj = computePriority({
       severity: event.severity || 1,
       firstReportedAt: event.firstReportedAt,
-      supportCount: event.supportCount,
+      supportCount: event.verifiedSupportCount || 0,
       sensitiveSite: event.sensitiveSite,
     });
   }
@@ -162,19 +163,33 @@ export async function getOperatorEventById(eventId) {
     linkedReports,
     timeline,
     priority: priorityObj,
-    closure: event.status === 'RESOLVED'
-      ? {
-          photoUrl: event.closurePhotoUrl,
-          note: event.closureNote,
-          resolvedAt: event.resolvedAt,
-        }
-      : null,
+    closure:
+      event.status === 'RESOLVED'
+        ? {
+            photoUrl: event.closurePhotoUrl,
+            note: event.closureNote,
+            resolvedAt: event.resolvedAt,
+          }
+        : null,
   };
 }
 
-export function updateOperatorEvent(eventId, data, userId) { return atomic(() => updateAtomic(eventId, data, userId)); }
+export function updateOperatorEvent(eventId, data, userId) {
+  return atomic(() => updateAtomic(eventId, data, userId));
+}
 async function updateAtomic(eventId, data, userId) {
-  data = z.object({ category: z.enum(THRESHOLDS.CATEGORIES).optional(), severity: z.number().int().min(1).max(3).optional(), estimatedWeightKg: z.number().finite().positive().max(10000).optional(), sensitiveSite: z.enum(['NONE','SCHOOL','HOSPITAL','MARKET','DRAIN']).optional(), verify: z.boolean().optional(), reject: z.object({reason: z.string().trim().min(5).max(500)}).optional(), requiresSpecialHandling: z.boolean().optional() }).strict().parse(data);
+  data = z
+    .object({
+      category: z.enum(THRESHOLDS.CATEGORIES).optional(),
+      severity: z.number().int().min(1).max(3).optional(),
+      estimatedWeightKg: z.number().finite().positive().max(10000).optional(),
+      sensitiveSite: z.enum(['NONE', 'SCHOOL', 'HOSPITAL', 'MARKET', 'DRAIN']).optional(),
+      verify: z.boolean().optional(),
+      reject: z.object({ reason: z.string().trim().min(5).max(500) }).optional(),
+      requiresSpecialHandling: z.boolean().optional(),
+    })
+    .strict()
+    .parse(data);
   const event = await WasteEvent.findById(eventId);
   if (!event) {
     const err = new Error('Waste event not found.');
@@ -183,12 +198,15 @@ async function updateAtomic(eventId, data, userId) {
     throw err;
   }
 
-  if (!['SUBMITTED','VERIFIED'].includes(event.status)) fail('This event cannot be edited in its current state.', 'INVALID_TRANSITION', 409);
-  if (data.verify && event.status !== 'SUBMITTED') fail('Event was already verified.', 'INVALID_TRANSITION', 409);
+  if (!['SUBMITTED', 'VERIFIED'].includes(event.status))
+    fail('This event cannot be edited in its current state.', 'INVALID_TRANSITION', 409);
+  if (data.verify && event.status !== 'SUBMITTED')
+    fail('Event was already verified.', 'INVALID_TRANSITION', 409);
   if (data.verify && data.reject) fail('Choose either verify or reject.');
   const previousStatus = event.status;
   const impactSummary = { verified: 0, rejected: 0 };
-  if (data.requiresSpecialHandling !== undefined) event.requiresSpecialHandling = data.requiresSpecialHandling;
+  if (data.requiresSpecialHandling !== undefined)
+    event.requiresSpecialHandling = data.requiresSpecialHandling;
 
   // 1. Rejection path
   if (data.reject) {
@@ -209,7 +227,7 @@ async function updateAtomic(eventId, data, userId) {
     // Reject all pending transactions
     const pendingTx = await ImpactTransaction.find({
       complaintId: event._id,
-      status: {$in: [TRANSACTION_STATUSES.PENDING, TRANSACTION_STATUSES.VERIFIED]},
+      status: { $in: [TRANSACTION_STATUSES.PENDING, TRANSACTION_STATUSES.VERIFIED] },
     });
     for (const tx of pendingTx) {
       tx.status = TRANSACTION_STATUSES.REJECTED;
@@ -219,7 +237,10 @@ async function updateAtomic(eventId, data, userId) {
     }
 
     // Set reports to REJECTED state
-    await Report.updateMany({ complaintId: event._id }, { state: 'REJECTED' });
+    await Report.updateMany(
+      { complaintId: event._id },
+      { state: 'REJECTED', evidenceReview: 'REJECTED' },
+    );
 
     return { event, impactSummary };
   }
@@ -241,7 +262,8 @@ async function updateAtomic(eventId, data, userId) {
 
   // 3. Verification action
   if (data.verify === true) {
-    if (event.category === 'UNKNOWN' && !event.requiresSpecialHandling) fail('Choose a category or send for specialist review.');
+    if (event.category === 'UNKNOWN' && !event.requiresSpecialHandling)
+      fail('Choose a category or send for specialist review.');
     if (!event.severity) {
       const err = new Error('Severity level (S1, S2, or S3) is required to verify an event.');
       err.status = 400;
@@ -255,10 +277,20 @@ async function updateAtomic(eventId, data, userId) {
       throw err;
     }
 
+    await Report.updateMany(
+      { complaintId: event._id, state: 'ACTIVE', evidenceReview: 'PENDING' },
+      { $set: { evidenceReview: 'ACCEPTED' } },
+    );
+    event.verifiedSupportCount = await Report.countDocuments({
+      complaintId: event._id,
+      role: 'SUPPORTING',
+      evidenceReview: 'ACCEPTED',
+    });
+
     const priorityResult = computePriority({
       severity: event.severity,
       firstReportedAt: event.firstReportedAt,
-      supportCount: event.supportCount,
+      supportCount: event.verifiedSupportCount || 0,
       sensitiveSite: event.sensitiveSite,
     });
 
@@ -312,7 +344,7 @@ async function updateAtomic(eventId, data, userId) {
       const priorityResult = computePriority({
         severity: event.severity,
         firstReportedAt: event.firstReportedAt,
-        supportCount: event.supportCount,
+        supportCount: event.verifiedSupportCount || 0,
         sensitiveSite: event.sensitiveSite,
       });
       event.priority = {
@@ -326,13 +358,28 @@ async function updateAtomic(eventId, data, userId) {
   return { event, impactSummary };
 }
 
-export function resolveOperatorEvent(eventId, data, userId) { return atomic(() => resolveAtomic(eventId, data, userId)); }
+export function resolveOperatorEvent(eventId, data, userId) {
+  return atomic(() => resolveAtomic(eventId, data, userId));
+}
 async function resolveAtomic(eventId, data, userId) {
-  const { to, note, closurePhoto, handoff } = z.object({
-    to: z.literal('RESOLVED'), note: z.string().trim().min(10).max(1000),
-    closurePhoto: z.object({uploadToken: z.string().min(10)}).passthrough(),
-    handoff: z.object({facilityName: z.string().trim().min(3).max(150), reference: z.string().trim().min(3).max(150), sourceUrl: z.string().url().max(500).refine(v => v.startsWith('https://'))}).optional(),
-  }).parse(data);
+  const { to, note, closurePhoto, handoff } = z
+    .object({
+      to: z.literal('RESOLVED'),
+      note: z.string().trim().min(10).max(1000),
+      closurePhoto: z.object({ uploadToken: z.string().min(10) }).passthrough(),
+      handoff: z
+        .object({
+          facilityName: z.string().trim().min(3).max(150),
+          reference: z.string().trim().min(3).max(150),
+          sourceUrl: z
+            .string()
+            .url()
+            .max(500)
+            .refine((v) => v.startsWith('https://')),
+        })
+        .optional(),
+    })
+    .parse(data);
 
   if (to !== 'RESOLVED') {
     const err = new Error('Invalid status transition.');
@@ -350,10 +397,22 @@ async function resolveAtomic(eventId, data, userId) {
   }
 
   const specialist = requiresHandoff(event);
-  if (event.status !== 'SCHEDULED' && !(event.status === 'VERIFIED' && specialist)) fail('Verify and assign collection before resolving this event.', 'INVALID_TRANSITION', 409);
-  if (specialist && !handoff) fail('Record the receiving service, receipt/reference, and source URL before closing this request.', 'HANDOFF_REQUIRED');
+  if (event.status !== 'SCHEDULED' && !(event.status === 'VERIFIED' && specialist))
+    fail('Verify and assign collection before resolving this event.', 'INVALID_TRANSITION', 409);
+  if (specialist && !handoff)
+    fail(
+      'Record the receiving service, receipt/reference, and source URL before closing this request.',
+      'HANDOFF_REQUIRED',
+    );
+  if (
+    await Report.exists({ complaintId: event._id, role: 'SUPPORTING', evidenceReview: 'PENDING' })
+  )
+    fail(
+      'Review pending supporting evidence before confirming completion.',
+      'EVIDENCE_REVIEW_REQUIRED',
+    );
   const evidence = await readEvidence(closurePhoto.uploadToken, userId, 'CLOSURE', String(eventId));
-  if (specialist) event.handoff = {...handoff, confirmedAt: new Date(), confirmedBy: userId};
+  if (specialist) event.handoff = { ...handoff, confirmedAt: new Date(), confirmedBy: userId };
   const prevStatus = event.status;
   event.status = 'RESOLVED';
   event.resolvedAt = new Date();
@@ -395,7 +454,11 @@ async function resolveAtomic(eventId, data, userId) {
         route.status = 'IN_PROGRESS';
       }
       await route.save();
-      routeUpdate = { id: route._id.toString(), status: route.status, remainingStops: pendingCount };
+      routeUpdate = {
+        id: route._id.toString(),
+        status: route.status,
+        remainingStops: pendingCount,
+      };
     }
   }
 
@@ -409,7 +472,9 @@ async function resolveAtomic(eventId, data, userId) {
       type: TRANSACTION_TYPES.RESOLUTION_BONUS,
       credits: CREDIT_VALUES.RESOLUTION_PRIMARY_BONUS,
       status: TRANSACTION_STATUSES.VERIFIED,
-      reason: specialist ? 'Receiving service handoff recorded by operator' : 'Clearance evidence recorded by operator',
+      reason: specialist
+        ? 'Receiving service handoff recorded by operator'
+        : 'Clearance evidence recorded by operator',
       verifiedAt: new Date(),
     });
   }
@@ -444,4 +509,71 @@ async function resolveAtomic(eventId, data, userId) {
 
 export async function uploadClosurePhoto(fileBuffer, mimeType, userId) {
   return storeEvidence(fileBuffer, mimeType, userId, 'CLOSURE');
+}
+
+export function reviewSupportingEvidence(eventId, data, userId) {
+  return atomic(async () => {
+    const input = z
+      .object({ reportId: z.string().regex(/^[a-f0-9]{24}$/i), accepted: z.boolean() })
+      .parse(data);
+    const event = await WasteEvent.findById(eventId);
+    if (!event || !['VERIFIED', 'SCHEDULED'].includes(event.status))
+      fail(
+        'Evidence can be reviewed on verified or scheduled requests.',
+        'INVALID_TRANSITION',
+        409,
+      );
+    const report = await Report.findOne({
+      _id: input.reportId,
+      complaintId: eventId,
+      role: 'SUPPORTING',
+      evidenceReview: 'PENDING',
+    });
+    if (!report)
+      fail(
+        'This supporting evidence was already reviewed or is unavailable.',
+        'EVIDENCE_REVIEWED',
+        409,
+      );
+    report.evidenceReview = input.accepted ? 'ACCEPTED' : 'REJECTED';
+    if (!input.accepted) report.state = 'REJECTED';
+    await report.save();
+    await ImpactTransaction.updateMany(
+      { reportId: report._id, status: 'PENDING' },
+      {
+        $set: {
+          status: input.accepted ? 'VERIFIED' : 'REJECTED',
+          ...(input.accepted ? { verifiedAt: new Date() } : { closedAt: new Date() }),
+        },
+      },
+    );
+    event.verifiedSupportCount = await Report.countDocuments({
+      complaintId: eventId,
+      role: 'SUPPORTING',
+      evidenceReview: 'ACCEPTED',
+    });
+    event.priority = {
+      ...computePriority({
+        severity: event.severity,
+        firstReportedAt: event.firstReportedAt,
+        supportCount: event.verifiedSupportCount,
+        sensitiveSite: event.sensitiveSite,
+      }),
+      computedAt: new Date(),
+    };
+    await event.save();
+    await StatusEvent.create({
+      entityType: 'COMPLAINT',
+      entityId: eventId,
+      from: event.status,
+      to: event.status,
+      actorId: userId,
+      actorRole: 'OPERATOR',
+      note: input.accepted
+        ? 'Supporting evidence accepted by operator.'
+        : 'Supporting evidence rejected by operator.',
+      meta: { reportId: report._id },
+    });
+    return { event, report };
+  });
 }
