@@ -8,6 +8,7 @@ import {
   supportExistingEvent,
   getCitizenReports,
   getReportDetails,
+  reopenResolvedReport,
 } from '../services/reportService.js';
 
 const upload = multer({
@@ -47,7 +48,8 @@ router.get('/complaints/nearby', authenticate, async (req, res, next) => {
 router.post('/reports', authenticate, async (req, res, next) => {
   try {
     const result = await createPrimaryReport(req.body, req.user.id);
-    res.status(201).json(result);
+    const status = result.isRetry ? 200 : 201;
+    res.status(status).json(result);
   } catch (err) {
     next(err);
   }
@@ -77,6 +79,16 @@ router.get('/reports/mine', authenticate, async (req, res, next) => {
 router.get('/reports/:id', authenticate, async (req, res, next) => {
   try {
     const result = await getReportDetails(req.params.id, req.user.id);
+    res.status(200).json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/reports/:id/reopen (Citizen disputes resolution if waste not cleared)
+router.post('/reports/:id/reopen', authenticate, async (req, res, next) => {
+  try {
+    const result = await reopenResolvedReport(req.params.id, req.body, req.user.id);
     res.status(200).json(result);
   } catch (err) {
     next(err);

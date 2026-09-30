@@ -3,14 +3,33 @@ import { Report } from '../models/Report.js';
 import { WasteEvent } from '../models/WasteEvent.js';
 import { StatusEvent } from '../models/StatusEvent.js';
 import { ImpactTransaction } from '../models/ImpactTransaction.js';
+import { UploadEvidence } from '../models/UploadEvidence.js';
 import { uploadImage } from '../adapters/storage/index.js';
 import { classifyImage } from '../adapters/vision/index.js';
 import { signUploadToken, verifyUploadToken } from '../utils/token.js';
+import { withTransaction } from '../utils/transaction.js';
 import { findDuplicateCandidates } from '../engines/duplicates.js';
 import { computePriority } from '../engines/priority.js';
 import { calculateSupportCredits, CREDIT_VALUES, TRANSACTION_STATUSES, TRANSACTION_TYPES } from '../engines/impact.js';
 import { isInsideBoundingBox, haversineDistance } from '../engines/geo.js';
 import { THRESHOLDS } from '../config/thresholds.js';
+
+/**
+ * Validates file buffer content to verify it is an actual JPEG, PNG, or WebP image.
+ */
+function validateImageBuffer(buffer) {
+  if (!buffer || buffer.length < 12) return false;
+  // JPEG: FF D8 FF
+  const isJpeg = buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+  // PNG: 89 50 4E 47
+  const isPng = buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47;
+  // WebP: RIFF ... WEBP
+  const isWebp =
+    buffer.slice(0, 4).toString('ascii') === 'RIFF' &&
+    buffer.slice(8, 12).toString('ascii') === 'WEBP';
+
+  return isJpeg || isPng || isWebp;
+}
 
 export async function classifyUploadedPhoto(fileBuffer, mimeType, userId) {
   if (!fileBuffer || fileBuffer.length === 0) {
@@ -27,6 +46,14 @@ export async function classifyUploadedPhoto(fileBuffer, mimeType, userId) {
     throw err;
   }
 
+  // Validate actual image content
+  if (!validateImageBuffer(fileBuffer)) {
+    const err = new Error('Corrupted or unsupported image file. Please upload a valid JPEG, PNG, or WebP photo.');
+    err.status = 400;
+    err.code = 'INVALID_IMAGE_FORMAT';
+    throw err;
+  }
+
   // Calculate SHA-256 hash of image
   const imageHash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
 
@@ -35,6 +62,19 @@ export async function classifyUploadedPhoto(fileBuffer, mimeType, userId) {
     uploadImage(fileBuffer, mimeType),
     classifyImage(fileBuffer, mimeType),
   ]);
+
+  // Persist upload evidence record to bind evidence to owner and prevent forged URLs or token reuse
+  const evidence = await UploadEvidence.create({
+    publicId: storageResult.imagePublicId,
+    ownerId: userId,
+    purpose: 'CITIZEN_REPORT',
+    imageUrl: storageResult.imageUrl,
+    imageHash,
+    mimeType: mimeType || 'image/jpeg',
+    sizeBytes: fileBuffer.length,
+    aiResult,
+    used: false,
+  });
 
   const uploadToken = signUploadToken(storageResult.imagePublicId, userId);
 
@@ -56,8 +96,10 @@ export async function findNearbyCandidates(lat, lng, category) {
     throw err;
   }
 
+  // Exclude private household requests from nearby public searches
   const activeEvents = await WasteEvent.find({
     status: { $in: ['SUBMITTED', 'VERIFIED', 'SCHEDULED'] },
+    reportType: { $ne: 'HOUSEHOLD' },
   }).lean();
 
   const candidates = findDuplicateCandidates({
@@ -79,20 +121,20 @@ export async function createPrimaryReport(data, userId) {
   const {
     requestId,
     uploadToken,
-    imageUrl,
-    imagePublicId,
-    imageHash,
     location,
     locationSource,
     locationAccuracyM,
     addressText,
-    ai,
     citizenCategory,
     description,
     duplicateDecision = 'NONE_FOUND',
+    reportType = 'PUBLIC',
+    householdItems,
+    householdQuantity,
+    specialistFlag = false,
   } = data;
 
-  // 1. Idempotency check
+  // 1. Idempotency check with stable requestId
   if (requestId) {
     const existingReport = await Report.findOne({ citizenId: userId, requestId });
     if (existingReport) {
@@ -103,22 +145,49 @@ export async function createPrimaryReport(data, userId) {
         complaint,
         role: 'PRIMARY',
         impact,
+        isRetry: true,
       };
     }
   }
 
-  // 2. Validate upload token
-  if (!verifyUploadToken(uploadToken, userId)) {
-    const err = new Error('Invalid or expired upload token.');
+  // 2. Validate upload token and verify bound evidence record
+  const tokenPayload = verifyUploadToken(uploadToken, userId);
+  if (!tokenPayload) {
+    const err = new Error('Invalid or expired upload token. Please upload the photo again.');
     err.status = 400;
     err.code = 'INVALID_TOKEN';
     throw err;
   }
 
-  // 3. Verify coordinates inside service area
+  const evidence = await UploadEvidence.findOne({
+    publicId: tokenPayload.publicId,
+    ownerId: userId,
+  });
+
+  if (!evidence) {
+    const err = new Error('Uploaded photo evidence not found for this account.');
+    err.status = 400;
+    err.code = 'EVIDENCE_NOT_FOUND';
+    throw err;
+  }
+
+  if (evidence.used) {
+    const err = new Error('This upload token has already been used for a submission.');
+    err.status = 409;
+    err.code = 'TOKEN_ALREADY_USED';
+    throw err;
+  }
+
+  // Use verified server metadata from evidence record
+  const imageUrl = evidence.imageUrl;
+  const imagePublicId = evidence.publicId;
+  const imageHash = evidence.imageHash;
+  const verifiedAi = evidence.aiResult;
+
+  // 3. Verify coordinates inside rectangular service area
   const coord = { lat: Number(location?.lat), lng: Number(location?.lng) };
   if (!isInsideBoundingBox(coord, THRESHOLDS.SERVICE_AREA_BBOX)) {
-    const err = new Error('This location is outside the current service area.');
+    const err = new Error('This location is outside the rectangular pilot service area (Kandivali East / Borivali East).');
     err.status = 400;
     err.code = 'OUTSIDE_SERVICE_AREA';
     throw err;
@@ -133,8 +202,9 @@ export async function createPrimaryReport(data, userId) {
     throw err;
   }
 
-  // 5. Check duplicate candidates unless citizen explicitly chose SEPARATE
-  if (duplicateDecision !== 'SEPARATE') {
+  // 5. For public reports, check duplicate candidates unless citizen chose SEPARATE
+  const isHousehold = reportType === 'HOUSEHOLD';
+  if (!isHousehold && duplicateDecision !== 'SEPARATE') {
     const { candidates } = await findNearbyCandidates(coord.lat, coord.lng, citizenCategory);
     if (candidates.length > 0) {
       const err = new Error('Possible duplicate reports detected in this vicinity.');
@@ -145,131 +215,217 @@ export async function createPrimaryReport(data, userId) {
     }
   }
 
-  // 6. Generate next sequential event code (WE-XXXX)
-  const count = await WasteEvent.countDocuments();
-  const code = `WE-${String(count + 1).padStart(4, '0')}`;
-
-  const categoryCorrected =
-    ai?.status === 'OK' &&
-    ai?.category &&
-    ai?.category !== citizenCategory;
-
-  // 7. Create WasteEvent
-  const event = await WasteEvent.create({
-    code,
-    location: {
-      type: 'Point',
-      coordinates: [coord.lng, coord.lat],
-    },
-    addressText: addressText || `${coord.lat.toFixed(4)}, ${coord.lng.toFixed(4)}`,
-    category: citizenCategory,
-    aiSuggestedCategory: ai?.category || 'UNKNOWN',
-    categoryConfirmedBy: 'CITIZEN',
-    status: 'SUBMITTED',
-    supportCount: 0,
-    firstReportedAt: new Date(),
-    lastReportedAt: new Date(),
-  });
-
-  // 8. Create Report
-  const report = await Report.create({
-    citizenId: userId,
-    complaintId: event._id,
-    role: 'PRIMARY',
-    imageUrl,
-    imagePublicId,
-    imageHash,
-    location: {
-      type: 'Point',
-      coordinates: [coord.lng, coord.lat],
-    },
-    locationSource: locationSource || 'MAP_PIN',
-    locationAccuracyM,
-    addressText: event.addressText,
-    aiSuggestedCategory: ai?.category,
-    aiShortReason: ai?.shortReason,
-    aiStatus: ai?.status || 'OK',
-    aiProvider: ai?.provider,
-    citizenCategory,
-    categoryCorrected,
-    description,
-    duplicateDecision,
-    requestId: requestId || crypto.randomUUID(),
-  });
-
-  event.primaryReportId = report._id;
-  await event.save();
-
-  // 9. Create StatusEvent
-  await StatusEvent.create({
-    entityType: 'COMPLAINT',
-    entityId: event._id,
-    from: null,
-    to: 'SUBMITTED',
-    actorId: userId,
-    actorRole: 'CITIZEN',
-    note: 'Initial report submitted by citizen.',
-  });
-
-  // 10. Create PENDING Impact Transactions
-  const impactTransactions = [];
-  const primaryTx = await ImpactTransaction.create({
-    citizenId: userId,
-    complaintId: event._id,
-    reportId: report._id,
-    type: TRANSACTION_TYPES.UNIQUE_REPORT,
-    credits: CREDIT_VALUES.UNIQUE_REPORT,
-    status: TRANSACTION_STATUSES.PENDING,
-    reason: 'Identified unique waste incident',
-  });
-  impactTransactions.push(primaryTx);
-
-  if (categoryCorrected) {
-    const correctionTx = await ImpactTransaction.create({
-      citizenId: userId,
-      complaintId: event._id,
-      reportId: report._id,
-      type: TRANSACTION_TYPES.CLASSIFICATION_CORRECTION,
-      credits: CREDIT_VALUES.CLASSIFICATION_CORRECTION,
-      status: TRANSACTION_STATUSES.PENDING,
-      reason: 'Citizen correction of AI waste classification',
-    });
-    impactTransactions.push(correctionTx);
+  // Validate household fields
+  if (isHousehold) {
+    if (!householdItems || !householdItems.trim()) {
+      const err = new Error('Please describe the household items needing disposal (e.g. 4 old phones, microwave).');
+      err.status = 400;
+      err.code = 'VALIDATION_ERROR';
+      throw err;
+    }
   }
 
-  return {
-    report,
-    complaint: {
-      id: event._id.toString(),
-      code: event.code,
-      status: event.status,
-      supportCount: event.supportCount,
-    },
-    role: 'PRIMARY',
-    impact: impactTransactions,
-  };
+  // Determine specialist queue
+  let specialistQueue = 'NONE';
+  if (citizenCategory === 'E_WASTE') {
+    specialistQueue = 'E_WASTE';
+  } else if (specialistFlag) {
+    specialistQueue = 'HAZARDOUS';
+  } else if (isHousehold) {
+    specialistQueue = 'HOUSEHOLD_SPECIALIST';
+  }
+
+  const categoryCorrected =
+    verifiedAi?.status === 'OK' &&
+    verifiedAi?.category &&
+    verifiedAi?.category !== citizenCategory;
+
+  return await withTransaction(async (session) => {
+    // 6. Generate next sequential event code (WE-XXXX)
+    const count = await WasteEvent.countDocuments();
+    const code = `WE-${String(count + 1).padStart(4, '0')}`;
+
+    // 7. Create WasteEvent
+    const [event] = await WasteEvent.create(
+      [
+        {
+          code,
+          location: {
+            type: 'Point',
+            coordinates: [coord.lng, coord.lat],
+          },
+          addressText: addressText || `${coord.lat.toFixed(4)}, ${coord.lng.toFixed(4)}`,
+          category: citizenCategory,
+          aiSuggestedCategory: verifiedAi?.category || 'UNKNOWN',
+          categoryConfirmedBy: 'CITIZEN',
+          reportType: isHousehold ? 'HOUSEHOLD' : 'PUBLIC',
+          householdItems: isHousehold ? householdItems.trim() : undefined,
+          householdQuantity: isHousehold ? Number(householdQuantity) || 1 : undefined,
+          specialistFlag: Boolean(specialistFlag),
+          specialistQueue,
+          status: 'SUBMITTED',
+          supportCount: 0,
+          reviewedSupportCount: 0,
+          firstReportedAt: new Date(),
+          lastReportedAt: new Date(),
+        },
+      ],
+      { session }
+    );
+
+    // 8. Create Report
+    const [report] = await Report.create(
+      [
+        {
+          citizenId: userId,
+          complaintId: event._id,
+          role: 'PRIMARY',
+          imageUrl,
+          imagePublicId,
+          imageHash,
+          location: {
+            type: 'Point',
+            coordinates: [coord.lng, coord.lat],
+          },
+          locationSource: locationSource || 'MAP_PIN',
+          locationAccuracyM,
+          addressText: event.addressText,
+          aiSuggestedCategory: verifiedAi?.category,
+          aiShortReason: verifiedAi?.shortReason,
+          aiStatus: verifiedAi?.status || 'OK',
+          aiProvider: verifiedAi?.provider,
+          citizenCategory,
+          categoryCorrected,
+          description,
+          reportType: isHousehold ? 'HOUSEHOLD' : 'PUBLIC',
+          householdItems: isHousehold ? householdItems.trim() : undefined,
+          householdQuantity: isHousehold ? Number(householdQuantity) || 1 : undefined,
+          specialistFlag: Boolean(specialistFlag),
+          duplicateDecision,
+          requestId: requestId || crypto.randomUUID(),
+        },
+      ],
+      { session }
+    );
+
+    event.primaryReportId = report._id;
+    await event.save({ session });
+
+    // Mark evidence as consumed
+    evidence.used = true;
+    evidence.usedAt = new Date();
+    evidence.usedForId = event._id;
+    await evidence.save({ session });
+
+    // 9. Create StatusEvent
+    await StatusEvent.create(
+      [
+        {
+          entityType: 'COMPLAINT',
+          entityId: event._id,
+          from: null,
+          to: 'SUBMITTED',
+          actorId: userId,
+          actorRole: 'CITIZEN',
+          note: isHousehold
+            ? `Household disposal request submitted (${householdQuantity || 1}x ${householdItems}).`
+            : 'Initial public waste incident submitted.',
+        },
+      ],
+      { session }
+    );
+
+    // 10. Create PENDING Impact Transactions
+    const impactTransactions = [];
+    const [primaryTx] = await ImpactTransaction.create(
+      [
+        {
+          citizenId: userId,
+          complaintId: event._id,
+          reportId: report._id,
+          type: TRANSACTION_TYPES.UNIQUE_REPORT,
+          credits: CREDIT_VALUES.UNIQUE_REPORT,
+          status: TRANSACTION_STATUSES.PENDING,
+          reason: isHousehold ? 'Household private disposal request registered' : 'Identified unique waste incident',
+        },
+      ],
+      { session }
+    );
+    impactTransactions.push(primaryTx);
+
+    if (categoryCorrected) {
+      const [correctionTx] = await ImpactTransaction.create(
+        [
+          {
+            citizenId: userId,
+            complaintId: event._id,
+            reportId: report._id,
+            type: TRANSACTION_TYPES.CLASSIFICATION_CORRECTION,
+            credits: CREDIT_VALUES.CLASSIFICATION_CORRECTION,
+            status: TRANSACTION_STATUSES.PENDING,
+            reason: 'Citizen correction of AI waste classification',
+          },
+        ],
+        { session }
+      );
+      impactTransactions.push(correctionTx);
+    }
+
+    return {
+      report,
+      complaint: {
+        id: event._id.toString(),
+        code: event.code,
+        status: event.status,
+        supportCount: event.supportCount,
+        reportType: event.reportType,
+        specialistQueue: event.specialistQueue,
+        nextStepNote: isHousehold
+          ? 'Your household disposal request is pending operator coordination with authorized take-back services. Pickup is not automatically booked.'
+          : 'Your public report is in the operator inspection queue.',
+      },
+      role: 'PRIMARY',
+      impact: impactTransactions,
+    };
+  });
 }
 
 export async function supportExistingEvent(complaintId, data, userId) {
   const {
     uploadToken,
-    imageUrl,
-    imagePublicId,
-    imageHash,
     location,
     locationSource,
     locationAccuracyM,
     addressText,
-    ai,
     citizenCategory,
     description,
   } = data;
 
-  // 1. Verify upload token
-  if (!verifyUploadToken(uploadToken, userId)) {
+  // 1. Verify upload token and evidence
+  const tokenPayload = verifyUploadToken(uploadToken, userId);
+  if (!tokenPayload) {
     const err = new Error('Invalid or expired upload token.');
     err.status = 400;
     err.code = 'INVALID_TOKEN';
+    throw err;
+  }
+
+  const evidence = await UploadEvidence.findOne({
+    publicId: tokenPayload.publicId,
+    ownerId: userId,
+  });
+
+  if (!evidence) {
+    const err = new Error('Uploaded photo evidence not found.');
+    err.status = 400;
+    err.code = 'EVIDENCE_NOT_FOUND';
+    throw err;
+  }
+
+  if (evidence.used) {
+    const err = new Error('This upload token has already been used.');
+    err.status = 409;
+    err.code = 'TOKEN_ALREADY_USED';
     throw err;
   }
 
@@ -279,6 +435,13 @@ export async function supportExistingEvent(complaintId, data, userId) {
     const err = new Error('Incident not found.');
     err.status = 404;
     err.code = 'NOT_FOUND';
+    throw err;
+  }
+
+  if (event.reportType === 'HOUSEHOLD') {
+    const err = new Error('Cannot support a private household disposal request.');
+    err.status = 400;
+    err.code = 'HOUSEHOLD_PRIVATE';
     throw err;
   }
 
@@ -303,14 +466,14 @@ export async function supportExistingEvent(complaintId, data, userId) {
   const eventCoord = { lat: event.location.coordinates[1], lng: event.location.coordinates[0] };
   const distanceM = haversineDistance(coord, eventCoord);
   if (distanceM > THRESHOLDS.DUP_RADIUS_M * 1.5) {
-    const err = new Error(`Supporting report location is too far from existing event (${Math.round(distanceM)}m).`);
+    const err = new Error(`Supporting report location is too far from existing incident (${Math.round(distanceM)}m).`);
     err.status = 400;
     err.code = 'TOO_FAR';
     throw err;
   }
 
   // 5. Check duplicate image hash
-  const dupImage = await Report.findOne({ citizenId: userId, imageHash });
+  const dupImage = await Report.findOne({ citizenId: userId, imageHash: evidence.imageHash });
   if (dupImage) {
     const err = new Error('You have already submitted this photograph.');
     err.status = 409;
@@ -318,78 +481,166 @@ export async function supportExistingEvent(complaintId, data, userId) {
     throw err;
   }
 
-  // 6. Create Supporting Report
-  const report = await Report.create({
-    citizenId: userId,
-    complaintId: event._id,
-    role: 'SUPPORTING',
-    imageUrl,
-    imagePublicId,
-    imageHash,
-    location: {
-      type: 'Point',
-      coordinates: [coord.lng, coord.lat],
-    },
-    locationSource: locationSource || 'MAP_PIN',
-    locationAccuracyM,
-    addressText: addressText || event.addressText,
-    aiSuggestedCategory: ai?.category,
-    aiShortReason: ai?.shortReason,
-    aiStatus: ai?.status || 'OK',
-    aiProvider: ai?.provider,
-    citizenCategory: citizenCategory || event.category,
-    categoryCorrected: false,
-    description,
-    duplicateDecision: 'SUPPORT',
-    requestId: crypto.randomUUID(),
-  });
+  return await withTransaction(async (session) => {
+    // 6. Create Supporting Report
+    const [report] = await Report.create(
+      [
+        {
+          citizenId: userId,
+          complaintId: event._id,
+          role: 'SUPPORTING',
+          imageUrl: evidence.imageUrl,
+          imagePublicId: evidence.publicId,
+          imageHash: evidence.imageHash,
+          location: {
+            type: 'Point',
+            coordinates: [coord.lng, coord.lat],
+          },
+          locationSource: locationSource || 'MAP_PIN',
+          locationAccuracyM,
+          addressText: addressText || event.addressText,
+          aiSuggestedCategory: evidence.aiResult?.category,
+          aiShortReason: evidence.aiResult?.shortReason,
+          aiStatus: evidence.aiResult?.status || 'OK',
+          aiProvider: evidence.aiResult?.provider,
+          citizenCategory: citizenCategory || event.category,
+          categoryCorrected: false,
+          description,
+          duplicateDecision: 'SUPPORT',
+          state: 'ACTIVE',
+          requestId: crypto.randomUUID(),
+        },
+      ],
+      { session }
+    );
 
-  // 7. Update event support count
-  event.supportCount += 1;
-  event.lastReportedAt = new Date();
+    // Consume evidence
+    evidence.used = true;
+    evidence.usedAt = new Date();
+    evidence.usedForId = event._id;
+    await evidence.save({ session });
 
-  // If already verified or scheduled, recompute priority
-  if (event.status === 'VERIFIED' || event.status === 'SCHEDULED') {
-    const priorityResult = computePriority({
-      severity: event.severity,
-      firstReportedAt: event.firstReportedAt,
-      supportCount: event.supportCount,
-      sensitiveSite: event.sensitiveSite,
-    });
-    event.priority = {
-      ...priorityResult,
-      computedAt: new Date(),
+    // 7. Update event support count
+    // Note: unreviewed support submissions start as pending and do NOT inflate priority until operator accepts
+    event.supportCount += 1;
+    event.lastReportedAt = new Date();
+    await event.save({ session });
+
+    // 8. Create Impact Transaction (PENDING until operator confirms supporting evidence)
+    const { credits, reason } = calculateSupportCredits(event.supportCount - 1);
+    const [tx] = await ImpactTransaction.create(
+      [
+        {
+          citizenId: userId,
+          complaintId: event._id,
+          reportId: report._id,
+          type: TRANSACTION_TYPES.SUPPORTING_REPORT,
+          credits,
+          status: TRANSACTION_STATUSES.PENDING,
+          reason,
+          verifiedAt: null,
+        },
+      ],
+      { session }
+    );
+
+    await StatusEvent.create(
+      [
+        {
+          entityType: 'COMPLAINT',
+          entityId: event._id,
+          from: event.status,
+          to: event.status,
+          actorId: userId,
+          actorRole: 'CITIZEN',
+          note: 'Supporting evidence submitted by neighbor.',
+        },
+      ],
+      { session }
+    );
+
+    return {
+      report,
+      complaint: {
+        id: event._id.toString(),
+        code: event.code,
+        status: event.status,
+        supportCount: event.supportCount,
+      },
+      role: 'SUPPORTING',
+      impact: [tx],
     };
-  }
-  await event.save();
-
-  // 8. Create Impact Transaction
-  // If event is already VERIFIED, supporting report is verified immediately!
-  const isDirectlyVerified = event.status === 'VERIFIED' || event.status === 'SCHEDULED';
-  const { credits, reason } = calculateSupportCredits(event.supportCount - 1);
-
-  const tx = await ImpactTransaction.create({
-    citizenId: userId,
-    complaintId: event._id,
-    reportId: report._id,
-    type: TRANSACTION_TYPES.SUPPORTING_REPORT,
-    credits,
-    status: isDirectlyVerified ? TRANSACTION_STATUSES.VERIFIED : TRANSACTION_STATUSES.PENDING,
-    reason,
-    verifiedAt: isDirectlyVerified ? new Date() : null,
   });
+}
 
-  return {
-    report,
-    complaint: {
-      id: event._id.toString(),
-      code: event.code,
+export async function reopenResolvedReport(reportId, { reason }, userId) {
+  const report = await Report.findOne({ _id: reportId, citizenId: userId });
+  if (!report) {
+    const err = new Error('Report not found or not owned by your account.');
+    err.status = 404;
+    err.code = 'NOT_FOUND';
+    throw err;
+  }
+
+  const event = await WasteEvent.findById(report.complaintId);
+  if (!event) {
+    const err = new Error('Associated incident not found.');
+    err.status = 404;
+    err.code = 'NOT_FOUND';
+    throw err;
+  }
+
+  if (event.status !== 'RESOLVED') {
+    const err = new Error('Only resolved incidents can be reopened.');
+    err.status = 409;
+    err.code = 'INVALID_STATUS';
+    throw err;
+  }
+
+  return await withTransaction(async (session) => {
+    const prevStatus = event.status;
+    event.status = 'REOPENED';
+    event.reopenedAt = new Date();
+    event.reopenedBy = userId;
+    event.reopenReason = reason || 'Citizen reported waste is still present on site.';
+    await event.save({ session });
+
+    await StatusEvent.create(
+      [
+        {
+          entityType: 'COMPLAINT',
+          entityId: event._id,
+          from: prevStatus,
+          to: 'REOPENED',
+          actorId: userId,
+          actorRole: 'CITIZEN',
+          note: `Incident reopened by citizen: ${event.reopenReason}`,
+        },
+      ],
+      { session }
+    );
+
+    // Revoke all RESOLUTION_BONUS credits associated with this incident
+    await ImpactTransaction.updateMany(
+      {
+        complaintId: event._id,
+        type: TRANSACTION_TYPES.RESOLUTION_BONUS,
+        status: TRANSACTION_STATUSES.VERIFIED,
+      },
+      {
+        status: TRANSACTION_STATUSES.REVOKED,
+        reason: 'Closure disputed by citizen — resolution credits revoked',
+      },
+      { session }
+    );
+
+    return {
+      ok: true,
+      complaintId: event._id.toString(),
       status: event.status,
-      supportCount: event.supportCount,
-    },
-    role: 'SUPPORTING',
-    impact: [tx],
-  };
+      reopenReason: event.reopenReason,
+    };
+  });
 }
 
 export async function getCitizenReports(userId, statusFilter = 'all') {
@@ -399,7 +650,7 @@ export async function getCitizenReports(userId, statusFilter = 'all') {
   const filtered = reports.filter((r) => {
     if (!r.complaintId) return false;
     if (statusFilter === 'active') {
-      return ['SUBMITTED', 'VERIFIED', 'SCHEDULED'].includes(r.complaintId.status);
+      return ['SUBMITTED', 'VERIFIED', 'SCHEDULED', 'REOPENED'].includes(r.complaintId.status);
     }
     if (statusFilter === 'resolved') {
       return r.complaintId.status === 'RESOLVED';
@@ -421,6 +672,9 @@ export async function getCitizenReports(userId, statusFilter = 'all') {
       role: r.role,
       imageUrl: r.imageUrl,
       category: r.citizenCategory,
+      reportType: r.reportType || 'PUBLIC',
+      householdItems: r.householdItems,
+      householdQuantity: r.householdQuantity,
       addressText: r.addressText || r.complaintId.addressText,
       createdAt: r.createdAt,
       complaint: {
@@ -428,6 +682,7 @@ export async function getCitizenReports(userId, statusFilter = 'all') {
         code: r.complaintId.code,
         status: r.complaintId.status,
         supportCount: r.complaintId.supportCount,
+        specialistQueue: r.complaintId.specialistQueue,
         updatedAt: r.complaintId.updatedAt,
       },
       impact: {
@@ -461,8 +716,11 @@ export async function getReportDetails(reportId, userId) {
     timeline,
     closure: complaint.status === 'RESOLVED'
       ? {
-          photoUrl: complaint.closurePhotoUrl,
-          note: complaint.closureNote,
+          photoUrl: complaint.completionEvidence?.completionPhotoUrl || complaint.closurePhotoUrl,
+          note: complaint.completionEvidence?.operatorNote || complaint.closureNote,
+          receivingFacilityName: complaint.completionEvidence?.receivingFacilityName,
+          receiptReference: complaint.completionEvidence?.receiptReference,
+          sourceUrl: complaint.completionEvidence?.sourceUrl,
           resolvedAt: complaint.resolvedAt,
         }
       : null,

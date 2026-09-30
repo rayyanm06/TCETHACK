@@ -56,11 +56,8 @@ export const CityMap: React.FC<CityMapProps> = ({
       attributionControl: true,
     });
 
-    const tileUrl =
-      import.meta.env.VITE_TILE_URL ||
-      'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
-    const attribution =
-      import.meta.env.VITE_TILE_ATTRIBUTION || '© OpenStreetMap contributors © CARTO';
+    const tileUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+    const attribution = '© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors';
 
     L.tileLayer(tileUrl, {
       attribution,
@@ -77,7 +74,12 @@ export const CityMap: React.FC<CityMapProps> = ({
       });
     }
 
+    const timer = setTimeout(() => {
+      map.invalidateSize();
+    }, 250);
+
     return () => {
+      clearTimeout(timer);
       map.remove();
       mapInstanceRef.current = null;
     };

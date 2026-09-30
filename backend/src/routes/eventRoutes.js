@@ -3,9 +3,11 @@ import multer from 'multer';
 import { authenticate, requireRole } from '../middleware/auth.js';
 import {
   getOperatorEvents,
+  getPublicEvents,
   getOperatorEventById,
   updateOperatorEvent,
   resolveOperatorEvent,
+  reviewSupportingReport,
   uploadClosurePhoto,
 } from '../services/eventService.js';
 
@@ -17,10 +19,14 @@ const upload = multer({
 const router = express.Router();
 const operatorAuth = [authenticate, requireRole(['OPERATOR'])];
 
-router.get('/complaints', ...operatorAuth, async (req, res, next) => {
+router.get('/complaints', authenticate, async (req, res, next) => {
   try {
-    const result = await getOperatorEvents(req.query);
-    res.status(200).json(result);
+    if (req.user?.role === 'OPERATOR') {
+      const result = await getOperatorEvents(req.query);
+      return res.status(200).json(result);
+    }
+    const result = await getPublicEvents(req.query);
+    return res.status(200).json(result);
   } catch (err) {
     next(err);
   }
@@ -47,6 +53,15 @@ router.patch('/complaints/:id', ...operatorAuth, async (req, res, next) => {
 router.patch('/complaints/:id/status', ...operatorAuth, async (req, res, next) => {
   try {
     const result = await resolveOperatorEvent(req.params.id, req.body, req.user.id);
+    res.status(200).json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/complaints/:id/support/:reportId/review', ...operatorAuth, async (req, res, next) => {
+  try {
+    const result = await reviewSupportingReport(req.params.id, req.params.reportId, req.body, req.user.id);
     res.status(200).json(result);
   } catch (err) {
     next(err);

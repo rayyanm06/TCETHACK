@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { AuthProvider } from './lib/auth.tsx';
 import { App } from './App.tsx';
+import 'leaflet/dist/leaflet.css';
 import './styles/base.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

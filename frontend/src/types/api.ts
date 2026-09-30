@@ -16,7 +16,11 @@ export type EventStatus =
   | 'SCHEDULED'
   | 'RESOLVED'
   | 'REJECTED'
+  | 'REOPENED'
   | 'MERGED';
+
+export type ReportType = 'PUBLIC' | 'HOUSEHOLD';
+export type SpecialistQueue = 'NONE' | 'E_WASTE' | 'HAZARDOUS' | 'HOUSEHOLD_SPECIALIST';
 
 export type PriorityTier = 'Critical' | 'High' | 'Normal' | 'Low';
 
@@ -52,12 +56,27 @@ export interface PriorityInfo {
   computedAt?: string;
 }
 
+export interface CompletionEvidence {
+  receivingFacilityName?: string;
+  receiptReference?: string;
+  sourceUrl?: string;
+  completionPhotoUrl?: string;
+  completionPublicId?: string;
+  operatorNote?: string;
+  timestamp?: string;
+}
+
 export interface WasteEventSummary {
   id: string;
   code: string;
   location: GeoLocation;
   addressText?: string;
   category: WasteCategory;
+  reportType?: ReportType;
+  householdItems?: string;
+  householdQuantity?: number;
+  specialistFlag?: boolean;
+  specialistQueue?: SpecialistQueue;
   status: EventStatus;
   priority: PriorityInfo;
   severity?: number;
@@ -65,10 +84,14 @@ export interface WasteEventSummary {
   estimatedWeightKg?: number;
   reportCount: number;
   supportCount: number;
+  reviewedSupportCount?: number;
   thumbnailUrl?: string;
   firstReportedAt: string;
   needsCategoryReview?: boolean;
   assignedRouteId?: string;
+  completionEvidence?: CompletionEvidence;
+  reopenedAt?: string;
+  reopenReason?: string;
 }
 
 export interface OperatorEventsResponse {
@@ -77,6 +100,7 @@ export interface OperatorEventsResponse {
     reports: number;
     events: number;
     plannedStops: number;
+    pendingSpecialist?: number;
   };
 }
 

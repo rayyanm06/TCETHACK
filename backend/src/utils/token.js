@@ -31,16 +31,17 @@ export function signUploadToken(publicId, userId) {
 
 export function verifyUploadToken(token, expectedUserId) {
   try {
+    if (!token || typeof token !== 'string') return null;
     const raw = Buffer.from(token, 'base64').toString('ascii');
     const parts = raw.split(':');
-    if (parts.length !== 4) return false;
+    if (parts.length !== 4) return null;
 
     const [publicId, userId, timestampStr, hmac] = parts;
-    if (expectedUserId && userId !== expectedUserId.toString()) return false;
+    if (expectedUserId && userId !== expectedUserId.toString()) return null;
 
     // Check expiry (30 min)
     const timestamp = Number(timestampStr);
-    if (Date.now() - timestamp > 30 * 60 * 1000) return false;
+    if (isNaN(timestamp) || Date.now() - timestamp > 30 * 60 * 1000) return null;
 
     const payload = `${publicId}:${userId}:${timestampStr}`;
     const expectedHmac = crypto
@@ -48,8 +49,10 @@ export function verifyUploadToken(token, expectedUserId) {
       .update(payload)
       .digest('hex');
 
-    return hmac === expectedHmac;
+    if (hmac !== expectedHmac) return null;
+
+    return { valid: true, publicId, userId, timestamp };
   } catch (err) {
-    return false;
+    return null;
   }
 }

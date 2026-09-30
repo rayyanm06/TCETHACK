@@ -318,10 +318,40 @@ export function planCollectionRoute({
     };
   }
 
-  // Map selected nodes to matrix indices
-  // Index 0 in matrix is depot. Selected items are at indices 1 .. selected.length
-  // (Assuming durationMatrix was built over [depot, ...selected])
-  const orderedIndices = sequenceStops(selected, durationMatrix);
+  // Ensure matrix indices strictly correspond to selected stops
+  // Build a mapped sub-matrix for [depot (0), ...selected]
+  const eventToOrigIndex = new Map();
+  events.forEach((ev, idx) => {
+    const id = (ev._id || ev.id).toString();
+    const origIdx = ev.matrixIndex !== undefined ? ev.matrixIndex : idx + 1;
+    eventToOrigIndex.set(id, origIdx);
+  });
+
+  const isFullMatrix = durationMatrix.length >= events.length + 1;
+  let activeDurationMatrix = durationMatrix;
+  let activeDistanceMatrix = distanceMatrix;
+  let activeBaseDurationMatrix = baseDurationMatrix || durationMatrix;
+
+  if (isFullMatrix && selected.length < events.length) {
+    const subIndices = [0, ...selected.map((s) => eventToOrigIndex.get((s._id || s.id).toString()))];
+    const k = subIndices.length;
+    activeDurationMatrix = Array.from({ length: k }, () => new Array(k).fill(0));
+    activeDistanceMatrix = Array.from({ length: k }, () => new Array(k).fill(0));
+    activeBaseDurationMatrix = Array.from({ length: k }, () => new Array(k).fill(0));
+
+    for (let r = 0; r < k; r++) {
+      const origR = subIndices[r];
+      for (let c = 0; c < k; c++) {
+        const origC = subIndices[c];
+        activeDurationMatrix[r][c] = durationMatrix[origR]?.[origC] || 0;
+        activeDistanceMatrix[r][c] = distanceMatrix[origR]?.[origC] || 0;
+        activeBaseDurationMatrix[r][c] = (baseDurationMatrix || durationMatrix)[origR]?.[origC] || 0;
+      }
+    }
+  }
+
+  // Map selected nodes to active sub-matrix indices
+  const orderedIndices = sequenceStops(selected, activeDurationMatrix);
 
   // Construct stops array
   const stops = [];
@@ -335,12 +365,10 @@ export function planCollectionRoute({
     const eventObj = selected[matrixIdx - 1];
     const evId = (eventObj._id || eventObj.id).toString();
 
-    const legDistanceM = distanceMatrix[prevMatrixIdx][matrixIdx] || 0;
-    const legDurationSec = durationMatrix[prevMatrixIdx][matrixIdx] || 0;
+    const legDistanceM = activeDistanceMatrix[prevMatrixIdx]?.[matrixIdx] || 0;
+    const legDurationSec = activeDurationMatrix[prevMatrixIdx]?.[matrixIdx] || 0;
     const legBaseDurationSec =
-      baseDurationMatrix && baseDurationMatrix[prevMatrixIdx]
-        ? baseDurationMatrix[prevMatrixIdx][matrixIdx] || legDurationSec
-        : legDurationSec;
+      activeBaseDurationMatrix[prevMatrixIdx]?.[matrixIdx] || legDurationSec;
 
     cumDistanceM += legDistanceM;
     cumDurationSec += legDurationSec;
@@ -362,12 +390,9 @@ export function planCollectionRoute({
   }
 
   // Final leg return to depot
-  const returnDist = distanceMatrix[prevMatrixIdx][0] || 0;
-  const returnDur = durationMatrix[prevMatrixIdx][0] || 0;
-  const returnBaseDur =
-    baseDurationMatrix && baseDurationMatrix[prevMatrixIdx]
-      ? baseDurationMatrix[prevMatrixIdx][0] || returnDur
-      : returnDur;
+  const returnDist = activeDistanceMatrix[prevMatrixIdx]?.[0] || 0;
+  const returnDur = activeDurationMatrix[prevMatrixIdx]?.[0] || 0;
+  const returnBaseDur = activeBaseDurationMatrix[prevMatrixIdx]?.[0] || returnDur;
 
   cumDistanceM += returnDist;
   cumDurationSec += returnDur;
@@ -384,12 +409,12 @@ export function planCollectionRoute({
   let fifoDurationSec = 0;
   let fifoPrev = 0;
   for (const idx of fifoIndices) {
-    fifoDistanceM += distanceMatrix[fifoPrev][idx] || 0;
-    fifoDurationSec += durationMatrix[fifoPrev][idx] || 0;
+    fifoDistanceM += activeDistanceMatrix[fifoPrev]?.[idx] || 0;
+    fifoDurationSec += activeDurationMatrix[fifoPrev]?.[idx] || 0;
     fifoPrev = idx;
   }
-  fifoDistanceM += distanceMatrix[fifoPrev][0] || 0;
-  fifoDurationSec += durationMatrix[fifoPrev][0] || 0;
+  fifoDistanceM += activeDistanceMatrix[fifoPrev]?.[0] || 0;
+  fifoDurationSec += activeDurationMatrix[fifoPrev]?.[0] || 0;
 
   const totals = {
     plannedLoadKg,

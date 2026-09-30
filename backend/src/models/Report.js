@@ -33,6 +33,15 @@ const reportSchema = new mongoose.Schema(
     },
     categoryCorrected: { type: Boolean, required: true, default: false },
     description: { type: String, maxlength: 280, trim: true },
+    reportType: {
+      type: String,
+      enum: ['PUBLIC', 'HOUSEHOLD'],
+      required: true,
+      default: 'PUBLIC',
+    },
+    householdItems: { type: String, trim: true },
+    householdQuantity: { type: Number, min: 1 },
+    specialistFlag: { type: Boolean, default: false },
     duplicateDecision: {
       type: String,
       enum: ['NONE_FOUND', 'SUPPORT', 'SEPARATE'],

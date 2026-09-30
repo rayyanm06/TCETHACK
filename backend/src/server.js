@@ -8,11 +8,15 @@ async function startServer() {
   try {
     await connectDB();
 
-    // Check if database needs initial seeding
+    // Check if database needs initial seeding (development demo mode only)
     const userCount = await User.countDocuments();
     if (userCount === 0) {
-      console.log('[Server] Database is empty. Running initial demo seed...');
-      await runSeed();
+      if (ENV.NODE_ENV !== 'production') {
+        console.log('[Server] Database is empty. Running initial demo seed for local development...');
+        await runSeed();
+      } else {
+        console.log('[Server] Production mode: database is empty. Automatic seeding is disabled for live integrity.');
+      }
     }
 
     app.listen(ENV.PORT, () => {

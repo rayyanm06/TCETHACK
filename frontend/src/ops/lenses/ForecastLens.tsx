@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../../lib/api.ts';
-import { HotspotAnalyticsResponse, ForecastCell } from '../../types/api.ts';
-import { Sparkles, Calendar, TrendingUp, Info } from 'lucide-react';
+import { ForecastCell } from '../../types/api.ts';
+import { Sparkles, Calendar, TrendingUp, Info, AlertCircle } from 'lucide-react';
 
 interface ForecastLensProps {
   onForecastDataChanged: (
@@ -12,7 +12,7 @@ interface ForecastLensProps {
 }
 
 export const ForecastLens: React.FC<ForecastLensProps> = ({ onForecastDataChanged }) => {
-  const [data, setData] = useState<HotspotAnalyticsResponse | null>(null);
+  const [data, setData] = useState<any>(null);
   const [mode, setMode] = useState<'NOW' | 'FORECAST'>('FORECAST');
   const [selectedWeek, setSelectedWeek] = useState<number>(13);
   const [loading, setLoading] = useState<boolean>(true);
@@ -20,7 +20,7 @@ export const ForecastLens: React.FC<ForecastLensProps> = ({ onForecastDataChange
   useEffect(() => {
     async function loadAnalytics() {
       try {
-        const res = await api.get<HotspotAnalyticsResponse>('/analytics/hotspots');
+        const res = await api.get<any>('/analytics/hotspots');
         setData(res);
       } catch (err) {
         console.error('Failed to load hotspots', err);
@@ -33,39 +33,75 @@ export const ForecastLens: React.FC<ForecastLensProps> = ({ onForecastDataChange
 
   // Update map layer whenever mode or data changes
   useEffect(() => {
-    if (!data) return;
+    if (!data || data.status === 'INSUFFICIENT_HISTORY' || !data.forecast) return;
 
     if (mode === 'FORECAST') {
-      onForecastDataChanged('FORECAST', data.forecast.cells, []);
+      onForecastDataChanged('FORECAST', data.forecast.cells || [], []);
     } else {
-      // Historical mode: pick cells from selected week (or week 12 if 13 is selected)
-      const weekIdx = Math.min(12, selectedWeek);
-      const weekObj = data.weeks.find((w) => w.weekIndex === weekIdx);
+      const maxHistoryWeek = (data.weeks || []).length;
+      const weekIdx = Math.min(maxHistoryWeek, selectedWeek);
+      const weekObj = data.weeks?.find((w: any) => w.weekIndex === weekIdx);
       onForecastDataChanged('NOW', [], weekObj?.cells || []);
     }
   }, [mode, selectedWeek, data]);
 
   if (loading) {
     return (
-      <aside className="absolute left-0 top-14 bottom-0 z-20 w-full sm:w-[360px] bg-surface p-6 flex items-center justify-center">
-        <span className="text-xs text-ink-3">Computing predictive hotspot baseline...</span>
+      <aside className="absolute left-0 top-14 bottom-0 z-20 w-full sm:w-[380px] bg-surface p-6 flex items-center justify-center">
+        <span className="text-xs text-ink-3">Loading operational spatial analytics...</span>
       </aside>
     );
   }
 
-  const topZones = data?.forecast.cells.slice(0, 5) || [];
+  // Insufficient history state
+  if (data?.status === 'INSUFFICIENT_HISTORY') {
+    return (
+      <aside className="absolute left-0 top-14 bottom-0 z-20 w-full sm:w-[380px] bg-surface/95 backdrop-blur-md border-r border-line shadow-panel flex flex-col p-5 space-y-4 survey-corner">
+        <div className="flex items-center gap-1.5 font-serif text-sm font-bold text-ink">
+          <TrendingUp className="w-4 h-4 text-plum" />
+          <span>Operational Hotspot Analytics</span>
+        </div>
+
+        <div className="p-3.5 bg-surface-2 rounded-card border border-line space-y-2">
+          <div className="flex items-center gap-2 text-ink font-bold text-xs">
+            <Info className="w-4 h-4 text-lagoon" />
+            <span>Accumulating Pilot Records</span>
+          </div>
+          <p className="text-xs text-ink-2 leading-relaxed">
+            {data.message}
+          </p>
+          <div className="p-2 bg-surface rounded border border-line text-[11px] text-ink-3">
+            <b>Complete historical weeks recorded:</b> {data.weeksAvailable || 0} / 3 minimum
+          </div>
+        </div>
+
+        <div className="p-3 bg-plum-100/40 rounded border border-plum/30 text-xs text-plum space-y-1">
+          <span className="font-bold block">Methodology & Transparency:</span>
+          <p className="text-[11px] text-ink-2">
+            Forecasting uses a weighted spatial moving average over complete weeks of reviewed public incidents. Household locations and the current incomplete week are strictly excluded from spatial hotspot predictions.
+          </p>
+        </div>
+
+        <div className="text-[11px] text-ink-3">
+          {data.liveThisWeek?.note}
+        </div>
+      </aside>
+    );
+  }
+
+  const topZones = data?.forecast?.cells?.slice(0, 5) || [];
+  const maxWeeks = (data?.weeks || []).length;
 
   return (
     <>
-      {/* Left Rail: Predictive Hotspot Insights (§6.10) */}
-      <aside className="absolute left-0 top-14 bottom-0 z-20 w-full sm:w-[360px] bg-surface/95 backdrop-blur-md border-r border-line shadow-panel flex flex-col survey-corner pb-20">
+      {/* Left Rail: Predictive Hotspot Insights */}
+      <aside className="absolute left-0 top-14 bottom-0 z-20 w-full sm:w-[380px] bg-surface/95 backdrop-blur-md border-r border-line shadow-panel flex flex-col survey-corner pb-20">
         <div className="p-3.5 border-b border-line flex items-center justify-between bg-surface-2/30">
           <div className="flex items-center gap-1.5 font-serif text-sm font-bold text-ink">
             <TrendingUp className="w-4 h-4 text-plum" />
             <span>Hotspot Analytics</span>
           </div>
 
-          {/* NOW | FORECAST Segmented Toggle (§6.10) */}
           <div className="flex bg-surface-2 p-0.5 rounded border border-line">
             <button
               onClick={() => setMode('NOW')}
@@ -87,19 +123,19 @@ export const ForecastLens: React.FC<ForecastLensProps> = ({ onForecastDataChange
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
-          {/* Disclaimer Chip (§6.10 & §24) */}
+          {/* Honest Disclosure Banner */}
           <div className="p-2.5 bg-plum-100/50 border border-plum/30 rounded text-[11px] text-plum flex items-start gap-2">
             <Info className="w-4 h-4 shrink-0 mt-0.5" />
-            <span>Baseline forecast on synthetic historical data (12 weeks, ~120 unique incidents).</span>
+            <span>{data?.label || 'Spatial moving average baseline forecast.'}</span>
           </div>
 
           {/* Top Predicted Zones */}
           <div className="space-y-2">
             <span className="text-[10px] uppercase font-bold text-ink-3 block">
-              Top Predicted Hotspot Zones (Week 13)
+              Top Predicted Hotspot Zones (Week {data?.forecast?.weekIndex})
             </span>
 
-            {topZones.map((zone, idx) => (
+            {topZones.map((zone: any, idx: number) => (
               <div key={zone.cellId} className="p-2.5 bg-surface-2 rounded border border-line space-y-1">
                 <div className="flex items-center justify-between font-bold">
                   <span className="text-ink">Zone {idx + 1} ({zone.cellId})</span>
@@ -108,54 +144,56 @@ export const ForecastLens: React.FC<ForecastLensProps> = ({ onForecastDataChange
                 <div className="flex items-center justify-between text-[11px] text-ink-3">
                   <span>Last 3 weeks activity:</span>
                   <span className="font-mono">
-                    W12: {zone.lastWeeks[0]} · W11: {zone.lastWeeks[1]} · W10: {zone.lastWeeks[2]}
+                    W-1: {zone.lastWeeks[0]} · W-2: {zone.lastWeeks[1]} · W-3: {zone.lastWeeks[2]}
                   </span>
                 </div>
               </div>
             ))}
           </div>
 
-          {/* Model Card (§6.10 & §16) */}
+          {/* Model Card */}
           <div className="p-3 bg-surface rounded-card border border-line space-y-2">
             <span className="text-[10px] uppercase font-bold text-ink-3 block">
-              Evaluation & Baseline Model Card
+              Model & Heuristic Disclosure
             </span>
             <p className="text-[11px] text-ink-2">
-              <b>Formula:</b> 0.5 · W12 + 0.3 · W11 + 0.2 · W10
+              <b>Method:</b> {data?.forecast?.method}
             </p>
-            <div className="p-2 bg-surface-2 rounded border border-line text-[11px] font-mono text-ink-2">
-              Held-out week 12 evaluation:<br />
-              • Model MAE: <b>{data?.evaluation?.maeModel}</b><br />
-              • Last-week naive baseline MAE: <b>{data?.evaluation?.maeLastWeek}</b>
-            </div>
+            {data?.evaluation && (
+              <div className="p-2 bg-surface-2 rounded border border-line text-[11px] font-mono text-ink-2">
+                Held-out evaluation (Week {data.evaluation.heldOutWeek}):<br />
+                • Model MAE: <b>{data.evaluation.maeModel}</b><br />
+                • Naive Last-Week Baseline MAE: <b>{data.evaluation.maeLastWeek}</b>
+              </div>
+            )}
             <p className="text-[10px] text-ink-3 italic">
-              Computed directly on the seeded synthetic dataset without unvalidated marketing accuracy claims.
+              Spatial aggregation of verified public incidents only. Private household locations are strictly excluded.
             </p>
           </div>
         </div>
       </aside>
 
-      {/* Bottom Time Control Slider (§6.10) */}
-      <div className="absolute bottom-4 left-0 sm:left-[360px] right-0 z-30 mx-4 sm:mx-6 bg-surface/90 backdrop-blur-md rounded-card border border-line shadow-panel p-3 max-w-xl">
+      {/* Bottom Time Control Slider */}
+      <div className="absolute bottom-4 left-0 sm:left-[380px] right-0 z-30 mx-4 sm:mx-6 bg-surface/90 backdrop-blur-md rounded-card border border-line shadow-panel p-3 max-w-xl">
         <div className="flex items-center justify-between mb-1.5 text-xs">
           <div className="flex items-center gap-1.5 font-semibold text-ink">
             <Calendar className="w-3.5 h-3.5 text-lagoon" />
-            <span>Time Slider: {selectedWeek === 13 ? 'Week 13 (Forecast)' : `Week ${selectedWeek}`}</span>
+            <span>Time Slider: {selectedWeek > maxWeeks ? `Forecast (Week ${selectedWeek})` : `Week ${selectedWeek}`}</span>
           </div>
           <span className="text-[11px] text-ink-3 font-mono">
-            {selectedWeek === 13 ? 'Predicted Activity' : 'Historical Data'}
+            {selectedWeek > maxWeeks ? 'Predicted Activity' : 'Historical Data'}
           </span>
         </div>
 
         <input
           type="range"
           min={1}
-          max={13}
+          max={maxWeeks + 1}
           value={selectedWeek}
           onChange={(e) => {
             const val = Number(e.target.value);
             setSelectedWeek(val);
-            if (val === 13) setMode('FORECAST');
+            if (val > maxWeeks) setMode('FORECAST');
             else setMode('NOW');
           }}
           className="w-full h-1.5 bg-surface-2 rounded-lg appearance-none cursor-pointer accent-plum"
@@ -163,10 +201,9 @@ export const ForecastLens: React.FC<ForecastLensProps> = ({ onForecastDataChange
 
         <div className="flex justify-between text-[10px] text-ink-3 mt-1 font-mono">
           <span>W1</span>
-          <span>W4</span>
-          <span>W8</span>
-          <span>W12</span>
-          <span className="font-bold text-plum">W13 (Forecast)</span>
+          {maxWeeks >= 6 && <span>W{Math.floor(maxWeeks / 2)}</span>}
+          <span>W{maxWeeks}</span>
+          <span className="font-bold text-plum">W{maxWeeks + 1} (Forecast)</span>
         </div>
       </div>
     </>

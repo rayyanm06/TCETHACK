@@ -1,45 +1,60 @@
-# CivicClean — Smart Waste Management & Collection Planning System
+# CivicClean — Smart Waste Reporting & Collection Management
 
-**Hackathon:** HackConquest Aether 2026 · **Problem Statement:** PS03  
-**Architecture:** React + TypeScript (Vite) · Node.js + Express · Embedded MongoDB (Atlas-ready) · Pure Domain Engines
+**Hackathon Evaluation:** October 1, 2026 at 10:00 AM IST · **Problem Statement:** PS03  
+**Target Pilot Zone:** Kandivali East / Borivali East (Thakur Complex & TCET vicinity, Mumbai)  
+**Architecture:** Vite + React (TypeScript) · Node.js + Express · MongoDB Replica Set (Atlas-ready) · Pure Domain Engines
 
 ---
 
-## 🌟 Executive Product Summary
+## 🌟 Executive Product Focus & Differentiation
 
-CivicClean connects citizen waste reporting with municipal collection operations in one unified civic loop:
-```
-5 citizen REPORTS  →  1 WASTE EVENT  →  1 COLLECTION STOP
-```
+> **"Citizen evidence becomes one reviewed waste task, which goes to the correct handling path and ends with recorded completion."**
 
-1. **Citizens:** Photograph waste, review AI-suggested categories with correction support, set editable map locations, consolidate duplicate reports, and see outcomes through a verified Civic Impact credit ledger.
-2. **Municipal Operators:** Inspect de-duplicated waste events, verify severity and load, plan capacity-constrained collection routes on road networks, simulate traffic congestion to replan remaining stops, clear events with photo evidence, and forecast recurring hotspots.
+Judges rightly questioned how this differs from existing government platforms like **Swachhata-MoHUA** or municipal CRM apps:
+- Swachhata already offers photo uploads, GPS coordinates, grievance tracking, and status upvoting. We do **not** claim those features alone are novel.
+- Our operational differentiation is the **logistical bridge** inside municipal operations:
+  1. **Spatial Incident Consolidation:** 5 citizen reports within 100m become **1 reviewed waste event and 1 collection stop**. Supporting reports link directly to the existing incident rather than generating redundant truck dispatches.
+  2. **Private Household Disposal Stream:** Citizens with 4–5 old smartphones or broken home appliances can submit household disposal requests. Residential coordinates are strictly shielded from public maps and nearby candidate searches.
+  3. **Queue Segregation (E-Waste & Specialist Hazards):** Electronic waste and hazardous items are quarantined in dedicated queues and strictly excluded from ordinary municipal compactors.
+  4. **Documented Specialist Handoff:** Under CPCB E-Waste Rules 2022, resolving electronic and household items strictly requires recording the receiving facility name, receipt/acceptance reference, and official CPCB/MPCB directory verification URL.
+  5. **Explainable, Operator-Reviewed Priority:** Raw upvotes or repeated submissions do not boost priority. Only operator-reviewed and accepted evidence contributes to the community score (capped at 5 supporters).
+  6. **Evidence-Backed Closure & Atomic Reopening:** Clearances require photo proof. If a citizen disputes a closure, reopening re-activates the incident and atomically revokes completion bonuses on the immutable credit ledger.
+
+Detailed official source citations and comparison tables are documented in [docs/GOV_COMPARISON.md](file:///c:/Users/Krish/OneDrive/Desktop/CivicClean/docs/GOV_COMPARISON.md).
+
+---
+
+## 📚 Key Evaluation & Presentation Documentation
+
+| Document | Purpose |
+|---|---|
+| [docs/GOV_COMPARISON.md](file:///c:/Users/Krish/OneDrive/Desktop/CivicClean/docs/GOV_COMPARISON.md) | Official government comparison with links to Swachhata-MoHUA, BMC, MPCB, and CPCB. |
+| [docs/ACCEPTANCE_CHECKLIST.md](file:///c:/Users/Krish/OneDrive/Desktop/CivicClean/docs/ACCEPTANCE_CHECKLIST.md) | Complete manual acceptance testing checklist for evaluators and judges. |
+| [docs/DEPLOYMENT.md](file:///c:/Users/Krish/OneDrive/Desktop/CivicClean/docs/DEPLOYMENT.md) | Production deployment guide, exact environment variables, replica set setup, and security safeguards. |
+| [docs/EVALUATION_WALKTHROUGH.md](file:///c:/Users/Krish/OneDrive/Desktop/CivicClean/docs/EVALUATION_WALKTHROUGH.md) | Rehearsed 5-minute presentation script for the student team. |
+| [docs/PPT_CLAIMS_TABLE.md](file:///c:/Users/Krish/OneDrive/Desktop/CivicClean/docs/PPT_CLAIMS_TABLE.md) | Presentation slide claim-to-feature matrix with explicit "What NOT to claim" guardrails. |
+| [docs/ALGORITHMS_AND_ARCHITECTURE.md](file:///c:/Users/Krish/OneDrive/Desktop/CivicClean/docs/ALGORITHMS_AND_ARCHITECTURE.md) | Defensible technical explanations of 0/1 Knapsack, 2-opt TSP, 4-factor Priority, and spatial moving averages. |
 
 ---
 
 ## 🚀 Quick Start (Development & Demo)
 
 ### Prerequisites
-- Node.js v18+ (tested on Node v22.20.0)
+- Node.js v18+ (tested on Node v22+)
 - npm v9+
 
 ### 1. Installation
-Clone the repository and install all dependencies:
 ```bash
-git clone https://github.com/Krish/CivicClean.git
-cd CivicClean
+# Clone the repository
+git clone https://github.com/rayyanm06/TCETHACK.git
+cd TCETHACK
 
-# Install dependencies for both backend and frontend
+# Install dependencies for root, backend, and frontend
 npm run install:all
 ```
 
-### 2. Database & Demo Baseline Seeding
-The backend includes a zero-friction embedded in-memory MongoDB server that runs automatically out-of-the-box (no local MongoDB installation required). To use MongoDB Atlas, simply provide your connection string in `backend/.env`.
-
-To seed the initial scenario:
-```bash
-npm run seed
-```
+### 2. Database
+The backend includes a zero-friction embedded in-memory MongoDB server that runs automatically out-of-the-box (no local MongoDB installation required in development). To use MongoDB Atlas, provide your connection string in `backend/.env`.
 
 ### 3. Launching Development Servers
 In two separate terminals:
@@ -52,7 +67,7 @@ npm run dev:backend
 npm run dev:frontend
 ```
 
-Now open `http://localhost:5173` in your browser.
+Open `http://localhost:5173` in your browser.
 
 ---
 
@@ -62,38 +77,45 @@ On the login screen (`http://localhost:5173/login`), click any of the one-click 
 
 | Role | Account | Password | Context |
 |---|---|---|---|
-| **Municipal Operator** | `operator@civicclean.demo` | `demo123` | Full access to Live City Map, Needs Attention rail, Event Drawer, Collection Planner, and Hotspot Forecast |
-| **Citizen (Seeded)** | `asha@civicclean.demo` | `demo123` | Has 4 unique reports, 3 resolved incidents, and 62 verified credits on the Civic Impact Ledger |
-| **Citizen (Live Demo)** | `ravi@civicclean.demo` | `demo123` | Clean account for demonstrating live photo reporting and duplicate support detection |
+| **Municipal Operator** | `operator@civicclean.demo` | `demo123` | Full access to Live City Map, Stream Queues, Event Dossier, Route Planner, and Hotspot Forecast |
+| **Citizen (Asha)** | `asha@civicclean.demo` | `demo123` | Active citizen account with verified reports and credit ledger |
+| **Citizen (Ravi)** | `ravi@civicclean.demo` | `demo123` | Clean citizen account for demonstrating live photo reporting and duplicate candidate support |
 
-To reset the database back to this pristine state at any point:
+### Creating Initial Operator in Production:
+Public registration always enforces `role: "CITIZEN"`. To securely provision an operator account without demo seeds:
 ```bash
-npm run demo:reset
+node backend/scripts/createOperator.js --name "Chief Officer" --email "chief@mumbai.gov.in" --password "SecurePass2026!"
 ```
 
 ---
 
-## 🧠 Core System Capabilities & Pure Engines
+## 🧪 Automated Regression & Engine Tests
 
-CivicClean is architected around deterministic pure engines covered by automated tests:
+CivicClean features 100% passing automated test coverage across mathematical domain engines, API security, and end-to-end workflows:
 
-1. **Geo Engine (`backend/src/engines/geo.js`):** Great-circle Haversine distance, bounding box validation, and circle-segment spatial intersections.
-2. **Duplicate Detection Engine (`backend/src/engines/duplicates.js`):** Transparently finds unresolved nearby events (≤100m, 7-day window, category compatibility) and prompts citizens to support existing incidents rather than generating redundant truck trips.
-3. **Priority Engine (`backend/src/engines/priority.js`):** 4-factor explainable rule-based scoring: Severity (10/25/40), Waiting Time (0-25 over 7 days), Community Confirmations (0-20, 4 pts/unique citizen, cap 5), and Sensitive Sites (+15 pts for schools, hospitals, markets, drains).
-4. **Route Planning Engine (`backend/src/engines/routing.js`):** 0/1 Knapsack selection strictly respecting vehicle capacity (default 1000 kg) combined with priority-weighted TSP sequencing on road-network matrices (with distance/speed fallback).
-5. **Traffic Replanning Engine (`backend/src/engines/traffic.js`):** Simulated congestion zone multipliers (×1.5, ×2, ×3); locks completed stops in place, preserves remaining truck capacity, and re-sequences pending stops from the truck's current position.
-6. **Hotspot Forecasting Engine (`backend/src/engines/forecast.js`):** Aggregates unique incidents across spatial grid cells (`0.005°` ~550m) and calculates weighted multi-week forecasts (`0.5 · W12 + 0.3 · W11 + 0.2 · W10`) with held-out week 12 MAE evaluation.
-7. **Impact Credit Ledger (`backend/src/engines/impact.js`):** Outcome-verified credit ledger (Unique: 10, Support: 3, Correction: 4, Resolution: 5). Balances are derived directly from immutable transaction rows.
-
----
-
-## 🧪 Running Unit Tests
-
-Run the engine test suite:
 ```bash
+# Run all tests (Engine Unit Tests + Workflow & Security Integration Suite)
+cd backend
 npm test
 ```
-All 12 test suites across geo, duplicate detection, priority, routing, traffic, and impact will execute.
+
+### Test Suite Highlights:
+- `engines.test.js`: 12 pure domain tests (Haversine distance, bounding box, 4-factor priority capping, duplicate matching, 0/1 Knapsack capacity, and congestion multipliers).
+- `workflow.test.js`: 14 end-to-end regression tests:
+  1. Citizen cannot use operator APIs (403 Forbidden).
+  2. Public signup cannot create an operator (role escalation prevented).
+  3. Photo upload rejects corrupt/non-image buffer (magic bytes validation).
+  4. Photo upload with valid JPEG succeeds and returns upload token.
+  5. Citizen creates primary report; submission retries with same `requestId` are idempotent.
+  6. Another citizen cannot access private report details (404 Not Found).
+  7. Citizen submits private household disposal (4 old phones) — coordinates shielded from public endpoints.
+  8. Duplicate candidate detection and neighbor support creates single incident with PENDING impact (does not inflate priority).
+  9. Operator reviews supporting evidence: accepting increases `reviewedSupportCount` and verified credits.
+  10. Route planning excludes household and e-waste; sub-matrices remain correctly aligned.
+  11. Stale / double route assignment is rejected (`409 PREVIEW_STALE`).
+  12. Specialist/Household resolution requires receiving facility, receipt ref, official URL, and completion photo.
+  13. Repeat closure on already resolved incident returns 409 or prevents duplicate resolution credits.
+  14. Citizen reopening disputed incident changes status to `REOPENED` and revokes `RESOLUTION_BONUS` credits.
 
 ---
 
@@ -102,35 +124,37 @@ All 12 test suites across geo, duplicate detection, priority, routing, traffic, 
 ```
 CivicClean/
 ├── docs/
-│   ├── blueprint.md          # Architectural Blueprint
-│   ├── demo-script.md        # Step-by-step 4-minute presentation rehearsal script
-│   └── phase0-notes.md       # Inspection & baseline decisions
+│   ├── GOV_COMPARISON.md             # Official government comparison & source links
+│   ├── ACCEPTANCE_CHECKLIST.md       # Step-by-step evaluator checklist
+│   ├── DEPLOYMENT.md                 # Production deployment & environment variables
+│   ├── EVALUATION_WALKTHROUGH.md     # 5-minute presentation script
+│   ├── PPT_CLAIMS_TABLE.md           # Claim-to-feature alignment & slide guardrails
+│   └── ALGORITHMS_AND_ARCHITECTURE.md# Technical algorithms defense
 ├── backend/
-│   ├── scripts/              # seed.js, resetDemo.js
-│   ├── seed/                 # demo.data.js, history.generator.js
+│   ├── scripts/                      # createOperator.js, seed.js, resetDemo.js
 │   ├── src/
-│   │   ├── adapters/         # vision (Gemini/fallback), storage (Cloudinary/local), routing (OSRM/estimate)
-│   │   ├── config/           # env.js, thresholds.js, db.js
-│   │   ├── engines/          # PURE: geo, duplicates, priority, routing, traffic, forecast, impact
-│   │   ├── middleware/       # auth, role verification, error handler
-│   │   ├── models/           # User, Report, WasteEvent, Vehicle, Route, StatusEvent, ImpactTransaction, HistoryIncident
-│   │   ├── routes/           # auth, config, report, event, route, analytics, impact, admin
-│   │   ├── services/         # business logic
-│   │   ├── app.js            # Express app
-│   │   └── server.js         # Boot entrypoint
-│   └── tests/                # Automated engine unit tests
+│   │   ├── adapters/                 # vision (Gemini/fallback), storage (Cloudinary/local), routing (OSRM/estimate)
+│   │   ├── config/                   # env.js, thresholds.js, db.js
+│   │   ├── engines/                  # PURE: geo, duplicates, priority, routing, traffic, forecast, impact
+│   │   ├── middleware/               # auth, role verification, error handler
+│   │   ├── models/                   # User, Report, WasteEvent, Vehicle, Route, StatusEvent, ImpactTransaction, UploadEvidence
+│   │   ├── routes/                   # auth, config, report, event, route, analytics, impact, admin
+│   │   ├── services/                 # business logic & transaction orchestration
+│   │   ├── app.js                    # Express app configuration
+│   │   └── server.js                 # Server boot entrypoint
+│   └── tests/
+│       ├── engines.test.js           # Unit engine tests (12 passing)
+│       ├── workflow.test.js          # Integration & security tests (14 passing)
+│       └── smoke.test.js             # Live API smoke tests
 └── frontend/
     ├── src/
-    │   ├── citizen/          # Home, ReportWaste (4-step flow), MyReports, ReportDetails, MyImpact
-    │   ├── ops/              # OpsShell, NowLens, RoutesLens, ForecastLens, ImpactLens, QueueTable, EventDrawer
-    │   ├── map/              # CityMap, markerUtils (Waste Pulse animations)
-    │   ├── components/       # StatusChip, PriorityChip, CategoryChip, Timeline
-    │   ├── lib/              # api client, auth context
-    │   ├── styles/           # tokens.css, base.css, map.css
-    │   ├── types/            # TypeScript API types
-    │   ├── App.tsx           # Router
-    │   └── main.tsx          # React root
+    │   ├── citizen/                  # CitizenHome, ReportWaste (4-step flow), ReportDetails, MyReports, MyImpact
+    │   ├── ops/                      # OpsShell, NowLens, RoutesLens, ForecastLens, ImpactLens, EventDrawer
+    │   ├── map/                      # CityMap, markerUtils (Neo-Civic styles)
+    │   ├── components/               # StatusChip, PriorityChip, CategoryChip, Timeline
+    │   ├── lib/                      # api client, auth context
+    │   ├── styles/                   # tokens.css, base.css, map.css
+    │   └── types/                    # TypeScript API types
     ├── index.html
-    ├── package.json
-    └── tailwind.config.ts
+    └── package.json
 ```

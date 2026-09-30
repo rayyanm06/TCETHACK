@@ -5,17 +5,50 @@ import { StatusEvent } from '../models/StatusEvent.js';
 import { planCollectionRoute, sequenceStops } from '../engines/routing.js';
 import { applyCongestionToMatrix } from '../engines/traffic.js';
 import { getDurationMatrix, getRouteGeometry } from '../adapters/routing/index.js';
+import { withTransaction } from '../utils/transaction.js';
 
-export async function previewRoute({ vehicleId, excludeEventIds = [], congestionZones = [] }, userId) {
+export async function previewRoute(
+  {
+    vehicleId,
+    vehicleConfig,
+    excludeEventIds = [],
+    congestionZones = [],
+  } = {},
+  userId
+) {
   let vehicle;
   if (vehicleId) {
     vehicle = await Vehicle.findById(vehicleId);
+  } else if (vehicleConfig && vehicleConfig.name) {
+    // Custom configured vehicle from operator input
+    vehicle = {
+      _id: null,
+      name: vehicleConfig.name,
+      registration: vehicleConfig.registration || 'MH-02-PILOT-01',
+      capacityKg: Number(vehicleConfig.capacityKg) || 1000,
+      acceptedCategories: vehicleConfig.acceptedCategories || [
+        'ORGANIC',
+        'PLASTIC',
+        'PAPER',
+        'GLASS',
+        'METAL',
+        'MIXED',
+      ],
+      maxRouteMinutes: Number(vehicleConfig.maxRouteMinutes) || 180,
+      depot: vehicleConfig.depot || {
+        name: 'North Municipal Central Depot',
+        location: {
+          type: 'Point',
+          coordinates: [72.876, 19.2071],
+        },
+      },
+    };
   } else {
     vehicle = await Vehicle.findOne({ isActive: true });
   }
 
   if (!vehicle) {
-    const err = new Error('No active collection vehicle found.');
+    const err = new Error('No active collection vehicle configured.');
     err.status = 404;
     err.code = 'VEHICLE_NOT_FOUND';
     throw err;
@@ -26,23 +59,30 @@ export async function previewRoute({ vehicleId, excludeEventIds = [], congestion
     lng: vehicle.depot.location.coordinates[0],
   };
 
-  // Find candidate events: VERIFIED and not currently assigned to another active route
+  // Find candidate events:
+  // Strict operational rule: include ONLY verified, unassigned ordinary public incidents.
+  // Exclude household, electronic, unknown, and flagged specialist requests.
   const candidateEvents = await WasteEvent.find({
     status: 'VERIFIED',
+    reportType: { $ne: 'HOUSEHOLD' },
+    category: { $ne: 'E_WASTE' },
+    specialistFlag: { $ne: true },
+    specialistQueue: 'NONE',
     $or: [{ assignedRouteId: null }, { assignedRouteId: { $exists: false } }],
   }).lean();
 
   if (candidateEvents.length === 0) {
-    const err = new Error('No verified events waiting for collection.');
+    const err = new Error('No eligible verified public incidents available for municipal truck routing.');
     err.status = 409;
     err.code = 'NO_ELIGIBLE_EVENTS';
     throw err;
   }
 
-  // Format event locations
-  const formattedEvents = candidateEvents.map((ev) => ({
+  // Format event locations and keep 1-indexed original position
+  const formattedEvents = candidateEvents.map((ev, idx) => ({
     ...ev,
     id: ev._id.toString(),
+    matrixIndex: idx + 1,
     location: {
       lat: ev.location.coordinates[1],
       lng: ev.location.coordinates[0],
@@ -52,12 +92,12 @@ export async function previewRoute({ vehicleId, excludeEventIds = [], congestion
   // Build matrix points: index 0 is depot, 1..N are events
   const points = [depotLoc, ...formattedEvents.map((e) => e.location)];
 
-  // Fetch base duration and distance matrices from routing adapter (OSRM with fallback)
+  // Fetch base duration and distance matrices from routing adapter (OSRM with reliable fallback)
   const baseMatrixResult = await getDurationMatrix(points);
   const baseDurationMatrix = baseMatrixResult.durations;
   const distanceMatrix = baseMatrixResult.distances;
 
-  // Apply simulated congestion if zones provided
+  // Apply simulated congestion scenario if zones provided
   let durationMatrix = baseDurationMatrix;
   const hasCongestion = congestionZones && congestionZones.length > 0;
   if (hasCongestion) {
@@ -67,7 +107,7 @@ export async function previewRoute({ vehicleId, excludeEventIds = [], congestion
   const plan = planCollectionRoute({
     depot: { name: vehicle.depot.name, location: depotLoc },
     vehicle: {
-      id: vehicle._id.toString(),
+      id: vehicle._id ? vehicle._id.toString() : 'custom-vehicle',
       name: vehicle.name,
       capacityKg: vehicle.capacityKg,
       acceptedCategories: vehicle.acceptedCategories,
@@ -90,9 +130,16 @@ export async function previewRoute({ vehicleId, excludeEventIds = [], congestion
 
   const geomResult = await getRouteGeometry(orderedPoints);
 
+  // If vehicle was temporary config, associate with default active vehicle ID for persistence
+  let vehicleDbId = vehicle._id;
+  if (!vehicleDbId) {
+    const activeDbVeh = await Vehicle.findOne({ isActive: true });
+    vehicleDbId = activeDbVeh?._id;
+  }
+
   // Save as DRAFT route
   const route = await Route.create({
-    vehicleId: vehicle._id,
+    vehicleId: vehicleDbId,
     depot: vehicle.depot,
     status: 'DRAFT',
     planVersion: 1,
@@ -110,9 +157,10 @@ export async function previewRoute({ vehicleId, excludeEventIds = [], congestion
     route: {
       id: route._id.toString(),
       vehicle: {
-        id: vehicle._id.toString(),
+        id: vehicleDbId ? vehicleDbId.toString() : 'vehicle-01',
         name: vehicle.name,
         capacityKg: vehicle.capacityKg,
+        acceptedCategories: vehicle.acceptedCategories,
       },
       depot: route.depot,
       status: route.status,
@@ -139,49 +187,91 @@ export async function assignRoute(routeId, userId) {
   }
 
   if (route.status !== 'DRAFT') {
-    const err = new Error('Route is already assigned or completed.');
+    const err = new Error('Route is already assigned, active, or completed.');
     err.status = 409;
     err.code = 'ALREADY_ASSIGNED';
     throw err;
   }
 
-  route.status = 'ASSIGNED';
-  await route.save();
-
-  await StatusEvent.create({
-    entityType: 'ROUTE',
-    entityId: route._id,
-    from: 'DRAFT',
-    to: 'ASSIGNED',
-    actorId: userId,
-    actorRole: 'OPERATOR',
-    note: `Route assigned with ${route.stops.length} stops (${route.totals.plannedLoadKg} kg).`,
-  });
-
-  // Set included events to SCHEDULED and set assignedRouteId
   const stopEventIds = route.stops.map((s) => s.eventId);
-  await WasteEvent.updateMany(
-    { _id: { $in: stopEventIds } },
-    { status: 'SCHEDULED', assignedRouteId: route._id }
-  );
 
-  for (const evId of stopEventIds) {
-    await StatusEvent.create({
-      entityType: 'COMPLAINT',
-      entityId: evId,
-      from: 'VERIFIED',
-      to: 'SCHEDULED',
-      actorId: userId,
-      actorRole: 'OPERATOR',
-      note: 'Scheduled for municipal collection.',
-    });
+  // REVALIDATION: Check that none of the events became stale, resolved, or double-assigned
+  const currentEvents = await WasteEvent.find({ _id: { $in: stopEventIds } });
+
+  if (currentEvents.length !== stopEventIds.length) {
+    const err = new Error('Route preview is stale: one or more candidate stops no longer exist.');
+    err.status = 409;
+    err.code = 'PREVIEW_STALE';
+    throw err;
   }
 
-  const updatedEvents = await WasteEvent.find({ _id: { $in: stopEventIds } }).lean();
-  return {
-    route,
-    events: updatedEvents.map((e) => ({ id: e._id.toString(), status: e.status })),
-  };
+  for (const ev of currentEvents) {
+    if (ev.status !== 'VERIFIED') {
+      const err = new Error(`Route preview is stale: stop ${ev.code} status changed to ${ev.status}. Please refresh route plan.`);
+      err.status = 409;
+      err.code = 'PREVIEW_STALE';
+      throw err;
+    }
+    if (ev.assignedRouteId && ev.assignedRouteId.toString() !== route._id.toString()) {
+      const err = new Error(`Stop ${ev.code} was already assigned to another collection route.`);
+      err.status = 409;
+      err.code = 'DOUBLE_ASSIGNMENT_PREVENTED';
+      throw err;
+    }
+  }
+
+  return await withTransaction(async (session) => {
+    route.status = 'ASSIGNED';
+    await route.save({ session });
+
+    await StatusEvent.create(
+      [
+        {
+          entityType: 'ROUTE',
+          entityId: route._id,
+          from: 'DRAFT',
+          to: 'ASSIGNED',
+          actorId: userId,
+          actorRole: 'OPERATOR',
+          note: `Route plan assigned with ${route.stops.length} stops (${route.totals.plannedLoadKg} kg). Dispatch queued.`,
+        },
+      ],
+      { session }
+    );
+
+    // Set included events to SCHEDULED and bind assignedRouteId
+    await WasteEvent.updateMany(
+      { _id: { $in: stopEventIds } },
+      { status: 'SCHEDULED', assignedRouteId: route._id },
+      { session }
+    );
+
+    for (const evId of stopEventIds) {
+      await StatusEvent.create(
+        [
+          {
+            entityType: 'COMPLAINT',
+            entityId: evId,
+            from: 'VERIFIED',
+            to: 'SCHEDULED',
+            actorId: userId,
+            actorRole: 'OPERATOR',
+            note: 'Scheduled for municipal collection trip.',
+          },
+        ],
+        { session }
+      );
+    }
+
+    const updatedEvents = await WasteEvent.find({ _id: { $in: stopEventIds } })
+      .session(session)
+      .lean();
+
+    return {
+      route,
+      events: updatedEvents.map((e) => ({ id: e._id.toString(), status: e.status })),
+    };
+  });
 }
 
 export async function replanRoute(routeId, { congestionZones = [], reason = 'Simulated congestion' }, userId) {
@@ -194,7 +284,7 @@ export async function replanRoute(routeId, { congestionZones = [], reason = 'Sim
   }
 
   if (route.status !== 'ASSIGNED' && route.status !== 'IN_PROGRESS') {
-    const err = new Error('Only active routes can be replanned.');
+    const err = new Error('Only active assigned routes can be replanned.');
     err.status = 409;
     err.code = 'ROUTE_NOT_ACTIVE';
     throw err;
@@ -238,11 +328,6 @@ export async function replanRoute(routeId, { congestionZones = [], reason = 'Sim
     },
   }));
 
-  // Remaining capacity
-  const doneWeight = completedStops.reduce((sum, s) => sum + s.weightKg, 0);
-  const remainingCapacity = Math.max(0, vehicle.capacityKg - doneWeight);
-
-  // If no pending stops, nothing to replan
   if (formattedPending.length === 0) {
     return { route, delta: { durationBeforeMin, durationAfterMin: durationBeforeMin, reordered: [] } };
   }
@@ -267,8 +352,8 @@ export async function replanRoute(routeId, { congestionZones = [], reason = 'Sim
   let prevIdx = 0;
   for (const matrixIdx of resequencedIndices) {
     const eventObj = formattedPending[matrixIdx - 1];
-    const legDist = distMatrix[prevIdx][matrixIdx] || 0;
-    const legDur = congestedMatrix[prevIdx][matrixIdx] || 0;
+    const legDist = distMatrix[prevIdx]?.[matrixIdx] || 0;
+    const legDur = congestedMatrix[prevIdx]?.[matrixIdx] || 0;
 
     cumDistanceM += legDist;
     cumDurationSec += legDur;
@@ -280,7 +365,7 @@ export async function replanRoute(routeId, { congestionZones = [], reason = 'Sim
       priorityScore: eventObj.priority?.score || 50,
       legDistanceM: legDist,
       legDurationMin: Math.round((legDur / 60) * 10) / 10,
-      legBaseDurationMin: Math.round(((baseMatrix[prevIdx][matrixIdx] || legDur) / 60) * 10) / 10,
+      legBaseDurationMin: Math.round(((baseMatrix[prevIdx]?.[matrixIdx] || legDur) / 60) * 10) / 10,
       arrivalOffsetMin: Math.round((cumDurationSec / 60) * 10) / 10,
       state: 'PENDING',
     });
@@ -289,8 +374,8 @@ export async function replanRoute(routeId, { congestionZones = [], reason = 'Sim
   }
 
   // Return to depot from last pending stop
-  cumDistanceM += distMatrix[prevIdx][0] || 0;
-  cumDurationSec += congestedMatrix[prevIdx][0] || 0;
+  cumDistanceM += distMatrix[prevIdx]?.[0] || 0;
+  cumDurationSec += congestedMatrix[prevIdx]?.[0] || 0;
 
   // Build updated geometry
   const allOrderedPoints = [depotLoc];
@@ -307,9 +392,7 @@ export async function replanRoute(routeId, { congestionZones = [], reason = 'Sim
 
   const newGeomResult = await getRouteGeometry(allOrderedPoints);
 
-  // Store history and update route
-  const prevGeom = route.geometry;
-  route.previousGeometry = prevGeom;
+  route.previousGeometry = route.geometry;
   route.geometry = newGeomResult.geometry;
   route.planHistory.push({
     version: route.planVersion,
@@ -335,7 +418,7 @@ export async function replanRoute(routeId, { congestionZones = [], reason = 'Sim
     to: `v${route.planVersion}`,
     actorId: userId,
     actorRole: 'OPERATOR',
-    note: `Route replanned due to congestion: ${durationBeforeMin} min → ${route.totals.durationMin} min.`,
+    note: `Route replanned due to congestion scenario: ${durationBeforeMin} min → ${route.totals.durationMin} min.`,
   });
 
   return {

@@ -11,7 +11,10 @@
     "seed:history": "node scripts/seedHistory.js",
     "demo:reset": "node scripts/resetDemo.js",
     "check:vision": "node scripts/checkVision.js",
-    "test": "node --test tests/**/*.test.js"
+    "test": "node --test tests/engines.test.js tests/workflow.test.js",
+    "test:engines": "node --test tests/engines.test.js",
+    "test:workflow": "node --test tests/workflow.test.js",
+    "smoke": "node tests/smoke.test.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",

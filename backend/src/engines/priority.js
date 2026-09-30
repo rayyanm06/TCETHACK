@@ -41,6 +41,7 @@ export function computePriority({
   severity = 1,
   firstReportedAt = new Date(),
   supportCount = 0,
+  reviewedSupportCount,
   sensitiveSite = 'NONE',
   now = new Date(),
 }) {
@@ -78,15 +79,18 @@ export function computePriority({
     detail: waitDetail,
   });
 
-  // 3. Community Confirmation
-  const supportersCounted = Math.min(Math.max(0, Number(supportCount) || 0), MAX_COUNTED_SUPPORTERS);
+  // 3. Community Confirmation (Operator-reviewed & accepted evidence)
+  const supportersCounted = Math.min(
+    Math.max(0, Number(reviewedSupportCount !== undefined ? reviewedSupportCount : supportCount) || 0),
+    MAX_COUNTED_SUPPORTERS
+  );
   const communityPoints = supportersCounted * POINTS_PER_SUPPORTER;
   totalScore += communityPoints;
   breakdown.push({
     key: 'community',
     label: 'Community Confirmations',
     points: communityPoints,
-    detail: `${supportersCounted} confirmation${supportersCounted === 1 ? '' : 's'} (${communityPoints} pts)`,
+    detail: `${supportersCounted} accepted confirmation${supportersCounted === 1 ? '' : 's'} (${communityPoints} pts)`,
   });
 
   // 4. Sensitive Site

@@ -11,6 +11,9 @@ export async function connectDB() {
   let uri = ENV.MONGODB_URI;
 
   if (!uri) {
+    if (ENV.NODE_ENV === 'production') {
+      throw new Error('[DB] FATAL: Persistent MONGODB_URI is required in production. Embedded database fallback is disabled.');
+    }
     if (process.env.VERCEL) {
       console.warn('[DB] Running on Vercel without MONGODB_URI. Configure MONGODB_URI in Vercel environment variables.');
       return null;
