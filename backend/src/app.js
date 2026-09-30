@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import path from 'path';
+import os from 'os';
 import { ENV } from './config/env.js';
 import { errorHandler } from './middleware/error.js';
 
@@ -39,7 +40,9 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Static local uploads serving
-const uploadsDir = path.resolve('uploads');
+const uploadsDir = process.env.VERCEL
+  ? path.join(os.tmpdir(), 'uploads')
+  : path.resolve('uploads');
 app.use('/uploads', express.static(uploadsDir));
 
 // Health Check

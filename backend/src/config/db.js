@@ -11,6 +11,10 @@ export async function connectDB() {
   let uri = ENV.MONGODB_URI;
 
   if (!uri) {
+    if (process.env.VERCEL) {
+      console.warn('[DB] Running on Vercel without MONGODB_URI. Configure MONGODB_URI in Vercel environment variables.');
+      return null;
+    }
     console.log('[DB] No MONGODB_URI specified in environment. Starting embedded in-memory MongoDB...');
     try {
       const { MongoMemoryServer } = await import('mongodb-memory-server');

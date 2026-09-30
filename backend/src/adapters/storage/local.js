@@ -1,12 +1,19 @@
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import crypto from 'crypto';
 
-const UPLOAD_DIR = path.resolve('uploads');
+const UPLOAD_DIR = process.env.VERCEL
+  ? path.join(os.tmpdir(), 'uploads')
+  : path.resolve('uploads');
 
-// Ensure directory exists
-if (!fs.existsSync(UPLOAD_DIR)) {
-  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+// Ensure directory exists safely
+try {
+  if (!fs.existsSync(UPLOAD_DIR)) {
+    fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+  }
+} catch (err) {
+  console.warn('[Storage] Could not create local uploads directory:', err.message);
 }
 
 export async function uploadLocal(fileBuffer, mimeType = 'image/jpeg') {
@@ -15,7 +22,14 @@ export async function uploadLocal(fileBuffer, mimeType = 'image/jpeg') {
   const filename = `${publicId}.${ext}`;
   const filePath = path.join(UPLOAD_DIR, filename);
 
-  await fs.promises.writeFile(filePath, fileBuffer);
+  try {
+    if (!fs.existsSync(UPLOAD_DIR)) {
+      fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+    }
+    await fs.promises.writeFile(filePath, fileBuffer);
+  } catch (err) {
+    console.warn('[Storage] Write to disk failed:', err.message);
+  }
 
   return {
     imageUrl: `/uploads/${filename}`,
