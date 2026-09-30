@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { WasteEventSummary } from '../../types/api.ts';
 import { PriorityChip } from '../../components/shared/PriorityChip.tsx';
+import { EvidenceImage } from '../../components/shared/EvidenceImage.tsx';
 import { Eye, Home, Zap, AlertTriangle, Trash2, Filter } from 'lucide-react';
 
 interface NowLensProps {
@@ -112,10 +113,11 @@ export const NowLens: React.FC<NowLensProps> = ({ events, onSelectEvent, selecte
                 >
                   <div className="flex items-start gap-2.5">
                     {ev.thumbnailUrl ? (
-                      <img
+                      <EvidenceImage
                         src={ev.thumbnailUrl}
                         alt={ev.code}
-                        className="w-14 h-14 rounded object-cover border border-line shrink-0"
+                        className="w-14 h-14 rounded shrink-0"
+                        allowLightbox={false}
                       />
                     ) : (
                       <div className="w-14 h-14 rounded bg-surface-2 border border-line flex items-center justify-center shrink-0 text-lg">

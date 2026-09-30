@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../lib/api.ts';
 import { StatusChip } from '../../components/shared/StatusChip.tsx';
+import { EvidenceImage } from '../../components/shared/EvidenceImage.tsx';
 import { Plus, ChevronRight, Inbox } from 'lucide-react';
 
 interface ReportItem {
@@ -121,10 +122,12 @@ export const MyReports: React.FC = () => {
               onClick={() => navigate(`/reports/${report.id}`)}
               className="bg-surface rounded-card border border-line p-3.5 shadow-sm hover:border-moss/40 transition cursor-pointer flex items-center gap-3.5"
             >
-              <img
+              <EvidenceImage
                 src={report.imageUrl}
-                alt="Reported waste"
-                className="w-18 h-18 w-[72px] h-[72px] rounded object-cover border border-line shrink-0"
+                alt={`Report ${report.complaint?.code || 'evidence'}`}
+                roleBadge={report.role}
+                className="w-[72px] h-[72px] rounded shrink-0"
+                allowLightbox={false}
               />
 
               <div className="flex-1 min-w-0">

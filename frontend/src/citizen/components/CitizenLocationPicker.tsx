@@ -119,17 +119,19 @@ export const CitizenLocationPicker: React.FC<CitizenLocationPickerProps> = ({
         const res = await api.get<{ ok: boolean; address: string }>(
           `/geocode/reverse?lat=${location!.lat}&lng=${location!.lng}`
         );
-        if (isMounted && res.address) {
-          setResolvedAddress(res.address);
-          if (onAddressResolved) {
-            onAddressResolved(res.address);
+        if (isMounted) {
+          if (res.ok && res.address) {
+            setResolvedAddress(res.address);
+            if (onAddressResolved) {
+              onAddressResolved(res.address);
+            }
+          } else {
+            setResolvedAddress(null);
           }
         }
       } catch (err) {
         if (isMounted) {
-          const fallback = `Location near (${location!.lat.toFixed(4)}, ${location!.lng.toFixed(4)})`;
-          setResolvedAddress(fallback);
-          if (onAddressResolved) onAddressResolved(fallback);
+          setResolvedAddress(null);
         }
       } finally {
         if (isMounted) setGeocoding(false);

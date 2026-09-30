@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../../lib/api.ts';
 import { WasteCategory } from '../../types/api.ts';
 import { StatusChip } from '../../components/shared/StatusChip.tsx';
 import { PriorityChip } from '../../components/shared/PriorityChip.tsx';
+import { EvidenceImage } from '../../components/shared/EvidenceImage.tsx';
 import {
   X,
   MapPin,
@@ -27,6 +29,7 @@ interface EventDrawerProps {
 }
 
 export const EventDrawer: React.FC<EventDrawerProps> = ({ eventId, onClose, onEventUpdated }) => {
+  const navigate = useNavigate();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -52,6 +55,15 @@ export const EventDrawer: React.FC<EventDrawerProps> = ({ eventId, onClose, onEv
   const [sourceUrl, setSourceUrl] = useState('');
 
   const closureFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Clean up closure temporary object URL
+  useEffect(() => {
+    return () => {
+      if (closurePhotoPreview && closurePhotoPreview.startsWith('blob:')) {
+        URL.revokeObjectURL(closurePhotoPreview);
+      }
+    };
+  }, [closurePhotoPreview]);
 
   async function fetchEventDetails() {
     setLoading(true);
@@ -295,27 +307,33 @@ export const EventDrawer: React.FC<EventDrawerProps> = ({ eventId, onClose, onEv
           </div>
         )}
 
-        {/* 1. Photo Gallery */}
+        {/* 1. Evidence Photographs */}
         {photos && photos.length > 0 && (
           <div className="space-y-2">
-            <div className="rounded overflow-hidden border border-line aspect-[16/10] bg-ink/5">
-              <img
-                src={photos[0].url}
-                alt="Primary waste"
-                className="w-full h-full object-cover"
-              />
-            </div>
+            <EvidenceImage
+              src={photos[0].url}
+              alt="Primary reported evidence"
+              roleBadge="PRIMARY"
+              className="w-full aspect-[16/10] rounded"
+              allowLightbox={true}
+            />
             {photos.length > 1 && (
-              <div className="flex gap-2 overflow-x-auto pb-1">
-                {photos.slice(1).map((ph: any, idx: number) => (
-                  <img
-                    key={idx}
-                    src={ph.url}
-                    alt={ph.caption}
-                    title={ph.caption}
-                    className="w-16 h-16 rounded object-cover border border-line shrink-0"
-                  />
-                ))}
+              <div className="space-y-1">
+                <span className="text-[10px] uppercase font-bold text-ink-3 block">
+                  Supporting Neighbor Photographs ({photos.length - 1})
+                </span>
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {photos.slice(1).map((ph: any, idx: number) => (
+                    <EvidenceImage
+                      key={idx}
+                      src={ph.url}
+                      alt={ph.caption || 'Supporting incident evidence'}
+                      roleBadge="SUPPORTING"
+                      className="w-16 h-16 rounded shrink-0"
+                      allowLightbox={true}
+                    />
+                  ))}
+                </div>
               </div>
             )}
             <p className="text-[11px] text-ink-3">{photos[0].caption}</p>
@@ -530,24 +548,29 @@ export const EventDrawer: React.FC<EventDrawerProps> = ({ eventId, onClose, onEv
               Resolution & Verification Record
             </span>
             {closure.photoUrl && (
-              <img
+              <EvidenceImage
                 src={closure.photoUrl}
-                alt="Cleared"
-                className="w-full h-32 rounded object-cover border border-moss/20"
+                alt="Cleared site completion record"
+                roleBadge="CLOSURE"
+                className="w-full h-36 rounded border border-moss/30"
+                allowLightbox={true}
               />
             )}
             {closure.receivingFacilityName && (
-              <div className="p-2 bg-surface rounded border border-moss/20 text-[11px] space-y-1">
+              <div className="p-2.5 bg-surface rounded border border-moss/30 text-[11px] space-y-1">
+                <span className="font-bold text-ink block">Recorded Specialist Recycler Handoff:</span>
                 <p><b>Receiving Facility:</b> {closure.receivingFacilityName}</p>
-                <p><b>Receipt Ref:</b> {closure.receiptReference}</p>
+                {closure.receiptReference && (
+                  <p><b>Receipt / Transfer Ref:</b> {closure.receiptReference}</p>
+                )}
                 {closure.sourceUrl && (
                   <a
                     href={closure.sourceUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="text-lagoon underline flex items-center gap-1"
+                    className="text-lagoon underline flex items-center gap-1 font-medium mt-1"
                   >
-                    <span>Official Directory Verification Link</span>
+                    <span>Operator Recorded Reference Link</span>
                     <ExternalLink className="w-3 h-3" />
                   </a>
                 )}
@@ -601,10 +624,12 @@ export const EventDrawer: React.FC<EventDrawerProps> = ({ eventId, onClose, onEv
                 {closureUploadToken && <span className="text-[10px] text-moss font-bold">✓ Uploaded</span>}
               </div>
               {closurePhotoPreview && (
-                <img
+                <EvidenceImage
                   src={closurePhotoPreview}
-                  alt="Clearance preview"
-                  className="w-full h-24 rounded object-cover border border-line mt-2"
+                  alt="Clearance photograph preview"
+                  roleBadge="CLOSURE"
+                  className="w-full h-28 rounded border border-line mt-2"
+                  allowLightbox={false}
                 />
               )}
             </div>
@@ -714,7 +739,7 @@ export const EventDrawer: React.FC<EventDrawerProps> = ({ eventId, onClose, onEv
               <button
                 onClick={() => {
                   onClose();
-                  window.location.hash = '#/ops/routes';
+                  navigate('/ops/routes');
                 }}
                 className="flex-1 py-2.5 bg-lagoon hover:bg-lagoon/90 text-surface font-semibold text-xs rounded shadow flex items-center justify-center gap-1.5"
               >

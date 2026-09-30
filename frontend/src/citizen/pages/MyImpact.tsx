@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../../lib/api.ts';
 import { Award, CheckCircle, Info, ShieldCheck, X } from 'lucide-react';
 import { CitizenImpactResponse } from '../../types/api.ts';
+import { EvidenceImage } from '../../components/shared/EvidenceImage.tsx';
 
 export const MyImpact: React.FC = () => {
   const [data, setData] = useState<CitizenImpactResponse | null>(null);
@@ -140,10 +141,12 @@ export const MyImpact: React.FC = () => {
               className="bg-surface rounded-card border border-line p-3.5 shadow-sm flex items-start gap-3"
             >
               {item.photoUrl ? (
-                <img
+                <EvidenceImage
                   src={item.photoUrl}
-                  alt="Waste item"
-                  className="w-14 h-14 rounded object-cover border border-line shrink-0 mt-0.5"
+                  alt={`Cleared site ${item.code}`}
+                  roleBadge="CLOSURE"
+                  className="w-14 h-14 rounded shrink-0 mt-0.5"
+                  allowLightbox={true}
                 />
               ) : (
                 <div className="w-14 h-14 rounded bg-surface-2 border border-line flex items-center justify-center shrink-0">

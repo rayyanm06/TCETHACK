@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../../lib/api.ts';
 import { StatusChip } from '../../components/shared/StatusChip.tsx';
 import { Timeline } from '../../components/shared/Timeline.tsx';
+import { EvidenceImage } from '../../components/shared/EvidenceImage.tsx';
 import {
   ArrowLeft,
   MapPin,
@@ -12,6 +13,7 @@ import {
   RotateCcw,
   ExternalLink,
   ShieldCheck,
+  RefreshCw,
 } from 'lucide-react';
 
 export const ReportDetails: React.FC = () => {
@@ -20,6 +22,7 @@ export const ReportDetails: React.FC = () => {
 
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Reopen state
@@ -28,19 +31,45 @@ export const ReportDetails: React.FC = () => {
   const [reopenReason, setReopenReason] = useState('');
   const [reopenError, setReopenError] = useState<string | null>(null);
 
-  async function loadReport() {
-    try {
-      const res = await api.get<any>(`/reports/${id}`);
-      setData(res);
-    } catch (err: any) {
-      setError(err.message || 'Report not found.');
-    } finally {
-      setLoading(false);
-    }
-  }
+  const loadReport = useCallback(
+    async (isBackground = false) => {
+      if (!isBackground) {
+        if (!data) setLoading(true);
+        else setRefreshing(true);
+      }
+      try {
+        const res = await api.get<any>(`/reports/${id}`);
+        setData(res);
+        setError(null);
+      } catch (err: any) {
+        if (!data) {
+          setError(err.message || 'Report not found.');
+        }
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [id, data]
+  );
 
+  // Initial load, modest 6s polling while open, and focus refresh
   useEffect(() => {
-    loadReport();
+    loadReport(false);
+
+    const interval = setInterval(() => {
+      loadReport(true);
+    }, 6000);
+
+    const handleFocus = () => {
+      loadReport(true);
+    };
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, [id]);
 
   const handleReopen = async () => {
@@ -56,7 +85,7 @@ export const ReportDetails: React.FC = () => {
       await api.post(`/reports/${id}/reopen`, { reason: reopenReason.trim() });
       setShowReopenForm(false);
       setReopenReason('');
-      await loadReport();
+      await loadReport(false);
     } catch (err: any) {
       setReopenError(err.message || 'Could not dispute closure.');
     } finally {
@@ -64,14 +93,19 @@ export const ReportDetails: React.FC = () => {
     }
   };
 
-  if (loading) {
-    return <div className="p-8 text-center text-xs text-ink-3">Loading report details...</div>;
+  if (loading && !data) {
+    return (
+      <div className="p-12 text-center text-xs text-ink-3 space-y-2">
+        <div className="w-5 h-5 border-2 border-moss border-t-transparent rounded-full animate-spin mx-auto" />
+        <p>Loading report details...</p>
+      </div>
+    );
   }
 
   if (error || !data) {
     return (
-      <div className="p-6 bg-surface rounded-card border border-line text-center space-y-3">
-        <p className="text-xs text-clay">{error || 'Unable to load report.'}</p>
+      <div className="p-6 bg-surface rounded-card border border-line text-center space-y-3 survey-corner">
+        <p className="text-xs text-clay font-medium">{error || 'Unable to load report.'}</p>
         <button
           onClick={() => navigate('/reports')}
           className="text-xs text-moss font-semibold underline"
@@ -86,76 +120,104 @@ export const ReportDetails: React.FC = () => {
   const isHousehold = report.reportType === 'HOUSEHOLD' || complaint.reportType === 'HOUSEHOLD';
 
   return (
-    <div className="space-y-4">
-      <button
-        onClick={() => navigate('/reports')}
-        className="flex items-center gap-1.5 text-xs font-semibold text-ink-2 hover:text-ink"
-      >
-        <ArrowLeft className="w-3.5 h-3.5" />
-        <span>Back to Reports</span>
-      </button>
+    <div className="space-y-4 max-w-3xl mx-auto">
+      {/* Header controls: Back & Refresh */}
+      <div className="flex items-center justify-between">
+        <button
+          onClick={() => navigate('/reports')}
+          className="flex items-center gap-1.5 text-xs font-semibold text-ink-2 hover:text-ink transition"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          <span>Back to Reports</span>
+        </button>
 
-      {/* Photo Header */}
-      <div className="bg-surface rounded-card border border-line overflow-hidden shadow-sm">
-        <img
-          src={report.imageUrl}
-          alt="Reported waste"
-          className="w-full h-48 sm:h-64 object-cover"
-        />
+        <button
+          type="button"
+          onClick={() => loadReport(false)}
+          disabled={refreshing}
+          className="flex items-center gap-1 px-2.5 py-1 rounded bg-surface border border-line hover:bg-surface-2 text-xs font-medium text-ink-2 shadow-xs transition"
+          title="Refresh latest updates from field operations"
+        >
+          <RefreshCw className={`w-3 h-3 text-moss ${refreshing ? 'animate-spin' : ''}`} />
+          <span>{refreshing ? 'Updating...' : 'Refresh'}</span>
+        </button>
+      </div>
 
-        <div className="p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="font-mono text-sm font-bold text-ink">
-              {complaint.code}
-            </span>
+      {/* Main Evidence Dossier Card */}
+      <div className="bg-surface rounded-card border border-line overflow-hidden shadow-xs survey-corner">
+        {/* Primary Evidence Photograph (with Lightbox) */}
+        <div className="relative">
+          <EvidenceImage
+            src={report.imageUrl}
+            alt="Original reported waste evidence"
+            roleBadge={report.role}
+            className="w-full h-56 sm:h-72"
+            allowLightbox={true}
+          />
+        </div>
+
+        <div className="p-4 sm:p-5 space-y-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-sm font-bold text-ink">
+                {complaint.code}
+              </span>
+              <span className="text-[10px] uppercase font-bold text-ink-3 px-2 py-0.5 rounded bg-surface-2 border border-line">
+                {report.citizenCategory}
+              </span>
+            </div>
             <StatusChip status={complaint.status} />
           </div>
 
           <div>
-            <h1 className="font-serif text-xl font-bold text-ink">
+            <h1 className="font-serif text-xl sm:text-2xl font-bold text-ink">
               {isHousehold ? 'Household Disposal Request' : `${report.citizenCategory} Waste Incident`}
             </h1>
-            <p className="text-xs text-ink-2 mt-0.5 flex items-center gap-1">
-              <MapPin className="w-3.5 h-3.5 text-clay shrink-0" />
+            <p className="text-xs text-ink-2 mt-1 flex items-start gap-1.5 leading-relaxed">
+              <MapPin className="w-3.5 h-3.5 text-clay shrink-0 mt-0.5" />
               <span>{report.addressText || complaint.addressText}</span>
             </p>
           </div>
 
-          {isHousehold && report.householdItems && (
-            <div className="p-3 bg-surface-2 rounded border border-line text-xs space-y-1">
-              <span className="font-bold text-ink block">Household Item Details:</span>
+          {/* Household Privacy Clarification */}
+          {isHousehold && (
+            <div className="p-3 bg-surface-2 rounded-card border border-line text-xs space-y-1">
+              <div className="flex items-center gap-1.5 font-bold text-ink">
+                <ShieldCheck className="w-3.5 h-3.5 text-lagoon" />
+                <span>Private Household Request</span>
+              </div>
               <p className="text-ink-2">
-                {report.householdQuantity || 1}x {report.householdItems}
+                <b>Inventory:</b> {report.householdQuantity || 1}x {report.householdItems || 'Household items'}
               </p>
-              <p className="text-[11px] text-ink-3">
-                Kept confidential to municipal operations. Not displayed on public maps.
+              <p className="text-[11px] text-ink-3 leading-relaxed">
+                Kept strictly confidential to operational dispatch coordinators. Address and items are shielded from public maps and community feeds.
               </p>
             </div>
           )}
         </div>
       </div>
 
-      {/* Reopened Alert */}
+      {/* Disputed / Reopened Warning Banner */}
       {complaint.status === 'REOPENED' && (
-        <div className="bg-clay-100 border border-clay/30 rounded-card p-4 space-y-2">
+        <div className="bg-clay-100 border border-clay/30 rounded-card p-4 space-y-2 survey-corner">
           <div className="flex items-center gap-2 text-clay font-bold text-xs">
-            <AlertTriangle className="w-4 h-4" />
-            <span>Incident Disputed & Reopened</span>
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            <span>Incident Disputed & Under Re-inspection</span>
           </div>
-          <p className="text-xs text-ink-2">
+          <p className="text-xs text-ink-2 leading-relaxed">
             You reported that this incident was not properly cleared: <i>"{complaint.reopenReason}"</i>.
-            Municipal resolution credits have been revoked and the incident has been escalated for re-investigation.
+            Prior clearance record has been reopened and escalated for re-inspection.
           </p>
         </div>
       )}
 
-      {/* Closure Verification Section */}
+      {/* Resolved Clearance Record & Photograph */}
       {complaint.status === 'RESOLVED' && closure && (
-        <div className="bg-moss-100/60 border border-moss/30 rounded-card p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-moss-700 font-semibold text-xs">
+        <div className="bg-moss-100/50 border border-moss/30 rounded-card p-4 sm:p-5 space-y-3.5 survey-corner">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2 text-moss-700 font-bold text-xs">
               <CheckCircle2 className="w-4 h-4" />
-              <span>Municipal Clearance & Completion Record</span>
+              <span>Clearance Completion Record</span>
             </div>
             <button
               onClick={() => setShowReopenForm(!showReopenForm)}
@@ -166,22 +228,32 @@ export const ReportDetails: React.FC = () => {
             </button>
           </div>
 
+          {/* Clearance Photograph */}
           {closure.photoUrl && (
-            <img
-              src={closure.photoUrl}
-              alt="Cleared waste site"
-              className="w-full h-44 rounded object-cover border border-moss/20"
-            />
+            <div className="space-y-1">
+              <span className="text-[10px] uppercase font-bold text-ink-3 block">
+                Completion Evidence Photo
+              </span>
+              <EvidenceImage
+                src={closure.photoUrl}
+                alt="Cleared waste site"
+                roleBadge="CLOSURE"
+                className="w-full h-48 sm:h-60 rounded border border-moss/30"
+                allowLightbox={true}
+              />
+            </div>
           )}
 
-          {/* Specialist Handoff Record if present */}
+          {/* Specialist Handoff Record (Honest Labeling) */}
           {closure.receivingFacilityName && (
             <div className="p-3 bg-surface rounded border border-moss/30 text-xs space-y-1.5">
-              <span className="font-bold text-ink block">Authorized Receiving Facility:</span>
-              <p className="text-ink-2">{closure.receivingFacilityName}</p>
+              <span className="font-bold text-ink block">
+                Recorded Specialist Recycler Handoff:
+              </span>
+              <p className="text-ink-2 font-medium">{closure.receivingFacilityName}</p>
               {closure.receiptReference && (
                 <p className="text-[11px] text-ink-3">
-                  <b>Receipt / Acceptance Ref:</b> {closure.receiptReference}
+                  <b>Receipt / Transfer Ref:</b> {closure.receiptReference}
                 </p>
               )}
               {closure.sourceUrl && (
@@ -191,7 +263,7 @@ export const ReportDetails: React.FC = () => {
                   rel="noreferrer"
                   className="text-[11px] text-lagoon font-semibold underline flex items-center gap-1"
                 >
-                  <span>Verify Service Directory Listing</span>
+                  <span>View Recycler Directory Reference</span>
                   <ExternalLink className="w-3 h-3" />
                 </a>
               )}
@@ -199,8 +271,8 @@ export const ReportDetails: React.FC = () => {
           )}
 
           {closure.note && (
-            <p className="text-xs text-ink-2 bg-surface/80 p-2.5 rounded border border-moss/20">
-              <b>Operator Note:</b> {closure.note}
+            <p className="text-xs text-ink-2 bg-surface/90 p-2.5 rounded border border-moss/20">
+              <b>Crew / Operator Note:</b> {closure.note}
             </p>
           )}
 
@@ -215,20 +287,20 @@ export const ReportDetails: React.FC = () => {
 
           {/* Dispute / Reopen Form */}
           {showReopenForm && (
-            <div className="mt-3 p-3 bg-surface rounded border border-clay/30 space-y-2">
+            <div className="mt-3 p-3.5 bg-surface rounded border border-clay/30 space-y-2.5">
               <span className="text-xs font-bold text-clay block">
-                Dispute Closure & Reopen Incident
+                Dispute Clearance & Reopen for Inspection
               </span>
-              <p className="text-[11px] text-ink-3">
-                If the waste was not actually removed or was only partially cleared, please state what remains. This will notify municipal supervision and revoke resolution bonus credits.
+              <p className="text-[11px] text-ink-3 leading-relaxed">
+                If the site was only partially cleared or waste remains, please explain what is still present. This triggers supervisor re-inspection.
               </p>
 
-              {reopenError && <p className="text-xs text-clay">{reopenError}</p>}
+              {reopenError && <p className="text-xs text-clay font-medium">{reopenError}</p>}
 
               <textarea
                 value={reopenReason}
                 onChange={(e) => setReopenReason(e.target.value)}
-                placeholder="Explain what is still present at the site..."
+                placeholder="State what is still present at the site..."
                 rows={2}
                 className="w-full p-2 border border-line rounded text-xs text-ink bg-surface focus:outline-none focus:ring-1 focus:ring-clay"
               />
@@ -237,7 +309,7 @@ export const ReportDetails: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowReopenForm(false)}
-                  className="px-2.5 py-1 text-xs text-ink-3 hover:text-ink"
+                  className="px-3 py-1.5 text-xs text-ink-3 hover:text-ink font-medium"
                 >
                   Cancel
                 </button>
@@ -245,10 +317,10 @@ export const ReportDetails: React.FC = () => {
                   type="button"
                   disabled={reopening}
                   onClick={handleReopen}
-                  className="px-3 py-1.5 bg-clay hover:bg-clay/90 text-surface text-xs font-semibold rounded shadow-sm flex items-center gap-1.5"
+                  className="px-3.5 py-1.5 bg-clay hover:bg-clay/90 text-surface text-xs font-semibold rounded shadow-xs flex items-center gap-1.5"
                 >
                   <RotateCcw className="w-3 h-3" />
-                  <span>{reopening ? 'Reopening...' : 'Confirm Dispute & Reopen'}</span>
+                  <span>{reopening ? 'Submitting dispute...' : 'Confirm Dispute'}</span>
                 </button>
               </div>
             </div>
@@ -256,55 +328,58 @@ export const ReportDetails: React.FC = () => {
         </div>
       )}
 
-      {/* Progress Timeline */}
-      <div className="bg-surface rounded-card border border-line p-4 shadow-sm">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-2 mb-3">
-          Operational Progress Timeline
-        </h2>
-        <Timeline currentStatus={complaint.status} history={timeline} />
+      {/* Activity Timeline: Separated History & Next Steps */}
+      <div className="bg-surface rounded-card border border-line p-4 sm:p-5 shadow-xs survey-corner">
+        <Timeline
+          currentStatus={complaint.status}
+          category={report.citizenCategory}
+          reportType={report.reportType}
+          specialistQueue={complaint.specialistQueue}
+          specialistFlag={complaint.specialistFlag}
+          assignedRouteId={complaint.assignedRouteId}
+          history={timeline}
+          closure={closure}
+        />
       </div>
 
-      {/* Contribution & Impact Credits Card */}
-      <div className="bg-surface rounded-card border border-line p-4 shadow-sm space-y-2">
-        <div className="flex items-center gap-2 text-xs font-semibold text-ink-2 uppercase tracking-wider">
-          <Award className="w-4 h-4 text-moss" />
-          <span>Your Contribution</span>
-        </div>
+      {/* Civic Impact Ledger Section */}
+      {impact && impact.length > 0 && (
+        <div className="bg-surface rounded-card border border-line p-4 shadow-xs survey-corner space-y-2">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-ink uppercase tracking-wider">
+            <Award className="w-3.5 h-3.5 text-moss" />
+            <span>Civic Contribution Ledger Entry</span>
+          </div>
 
-        <div className="text-xs text-ink-2">
-          {report.role === 'PRIMARY' ? (
-            <p>You were the <b>primary reporter</b> who identified this waste pile.</p>
-          ) : (
-            <p>You <b>confirmed and supported</b> an existing nearby waste incident.</p>
-          )}
-          {complaint.supportCount > 0 && (
-            <p className="text-ink-3 mt-0.5">
-              {complaint.supportCount} other neighbor{complaint.supportCount === 1 ? '' : 's'} also contributed to this incident.
-            </p>
-          )}
-        </div>
-
-        {impact && impact.length > 0 && (
-          <div className="pt-2 border-t border-line space-y-1.5">
-            {impact.map((tx: any, idx: number) => (
-              <div key={idx} className="flex items-center justify-between text-xs">
-                <span className="text-ink-2">{tx.reason}</span>
+          <div className="space-y-1.5">
+            {impact.map((tx: any) => (
+              <div
+                key={tx._id}
+                className="p-2.5 rounded bg-surface-2 border border-line flex items-center justify-between text-xs"
+              >
+                <div>
+                  <span className="font-semibold text-ink block">
+                    {tx.type === 'PRIMARY_REPORT'
+                      ? 'Primary Incident Contribution'
+                      : tx.type === 'SUPPORT_REPORT'
+                      ? 'Supporting Evidence Confirmation'
+                      : 'Resolution Verification'}
+                  </span>
+                  <span className="text-[10px] text-ink-3">
+                    Status: <b>{tx.status}</b> {tx.stateReason ? `· ${tx.stateReason}` : ''}
+                  </span>
+                </div>
                 <span
-                  className={`font-mono font-bold px-2 py-0.5 rounded text-[11px] ${
-                    tx.status === 'VERIFIED'
-                      ? 'bg-moss-100 text-moss-700'
-                      : tx.status === 'REVOKED'
-                      ? 'bg-clay-100 text-clay line-through'
-                      : 'bg-surface-2 text-ink-3'
+                  className={`font-mono font-bold ${
+                    tx.status === 'VERIFIED' ? 'text-moss' : 'text-ochre'
                   }`}
                 >
-                  +{tx.credits} {tx.status}
+                  +{tx.credits} Credits
                 </span>
               </div>
             ))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };

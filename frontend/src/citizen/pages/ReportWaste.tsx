@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useRef, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../../lib/api.ts';
 import {
   Camera,
@@ -19,9 +19,13 @@ import {
 import { CategoryChip, CATEGORY_DETAILS } from '../../components/shared/CategoryChip.tsx';
 import { WasteCategory, ClassifyResponse, DuplicateCandidate, ReportType } from '../../types/api.ts';
 import { CitizenLocationPicker } from '../components/CitizenLocationPicker.tsx';
+import { EvidenceImage } from '../../components/shared/EvidenceImage.tsx';
 
 export const ReportWaste: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const typeParam = searchParams.get('type');
+  const initialType: ReportType = typeParam === 'household' ? 'HOUSEHOLD' : 'PUBLIC';
 
   // Multi-step flow:
   // Step 0: Scope Selection (Public vs Household)
@@ -30,16 +34,18 @@ export const ReportWaste: React.FC = () => {
   // Step 3: Location (Real Leaflet Map + GPS)
   // Step 4: Review & Submit
   // Step 5: Success
-  const [step, setStep] = useState<number>(0);
+  // If user navigated directly via action button with ?type=..., start at Step 1
+  const [step, setStep] = useState<number>(typeParam ? 1 : 0);
 
   // Scope selection
-  const [reportType, setReportType] = useState<ReportType>('PUBLIC');
+  const [reportType, setReportType] = useState<ReportType>(initialType);
   const [householdItems, setHouseholdItems] = useState<string>('');
   const [householdQuantity, setHouseholdQuantity] = useState<number>(1);
   const [specialistFlag, setSpecialistFlag] = useState<boolean>(false);
 
   // Photo state
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const isAddressManuallyEditedRef = useRef<boolean>(false);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [classifyData, setClassifyData] = useState<ClassifyResponse | null>(null);
   const [uploading, setUploading] = useState<boolean>(false);
@@ -70,12 +76,24 @@ export const ReportWaste: React.FC = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Clean up object URLs on unmount
+  useEffect(() => {
+    return () => {
+      if (photoPreview && photoPreview.startsWith('blob:')) {
+        URL.revokeObjectURL(photoPreview);
+      }
+    };
+  }, [photoPreview]);
+
   // Photo upload handler
   const handleUploadBlob = async (fileOrBlob: Blob, fileName: string) => {
     setError(null);
     setUploadError(null);
     setPhotoFile({ name: fileName } as any);
 
+    if (photoPreview && photoPreview.startsWith('blob:')) {
+      URL.revokeObjectURL(photoPreview);
+    }
     const objectUrl = URL.createObjectURL(fileOrBlob);
     setPhotoPreview(objectUrl);
     setUploading(true);
@@ -456,7 +474,7 @@ export const ReportWaste: React.FC = () => {
               />
               <div className="flex-1 min-w-0">
                 <span className="text-[10px] font-bold text-moss uppercase tracking-wider block">
-                  Evidence Verified ✓
+                  Photo Received & Attached
                 </span>
                 <span className="text-xs font-semibold text-ink truncate block">
                   {photoFile?.name || 'Evidence photograph'}
@@ -612,7 +630,7 @@ export const ReportWaste: React.FC = () => {
               setLocationAccuracyM(acc);
             }}
             onAddressResolved={(addr) => {
-              if (!addressText || addressText.startsWith('Location (')) {
+              if (!isAddressManuallyEditedRef.current && addr) {
                 setAddressText(addr);
               }
             }}
@@ -626,7 +644,10 @@ export const ReportWaste: React.FC = () => {
               <input
                 type="text"
                 value={addressText}
-                onChange={(e) => setAddressText(e.target.value)}
+                onChange={(e) => {
+                  isAddressManuallyEditedRef.current = true;
+                  setAddressText(e.target.value);
+                }}
                 placeholder="e.g. Thakur Complex Main Road, Kandivali East"
                 className="w-full px-3 py-2 rounded-card border border-line text-xs bg-surface text-ink focus:outline-none focus:ring-1 focus:ring-lagoon"
               />
@@ -677,13 +698,13 @@ export const ReportWaste: React.FC = () => {
                   key={cand.id}
                   className="p-3 bg-surface-2 rounded-card border border-line flex items-center gap-3"
                 >
-                  {cand.photoUrl && (
-                    <img
-                      src={cand.photoUrl}
-                      alt="Nearby incident"
-                      className="w-16 h-16 rounded object-cover border border-line shrink-0"
-                    />
-                  )}
+                  <EvidenceImage
+                    src={cand.photoUrl}
+                    alt={`Nearby incident ${cand.code}`}
+                    roleBadge="SUPPORTING"
+                    className="w-16 h-16 rounded shrink-0"
+                    allowLightbox={true}
+                  />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="font-bold text-xs text-ink">{cand.code}</span>

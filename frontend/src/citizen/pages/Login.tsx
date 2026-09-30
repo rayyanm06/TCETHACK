@@ -217,24 +217,16 @@ export const Login: React.FC = () => {
             </div>
           )}
 
-          {/* Operator Instructions & Credentials Guidance */}
+          {/* Operator Access Notice */}
           {activeTab === 'OPERATOR' && (
-            <div className="pt-2 border-t border-line space-y-2">
-              <div className="p-3 bg-surface-2 rounded border border-line text-xs text-ink-2 space-y-1.5">
+            <div className="pt-2 border-t border-line">
+              <div className="p-3 bg-surface-2 rounded border border-line text-xs text-ink-2 space-y-1">
                 <div className="flex items-center gap-1.5 font-bold text-ink">
                   <KeyRound className="w-3.5 h-3.5 text-lagoon" />
-                  <span>Operator Account Access</span>
+                  <span>Authorized Personnel Only</span>
                 </div>
                 <p className="text-[11px] text-ink-3 leading-relaxed">
-                  Operator privileges require backend administrative assignment. For this pilot evaluation, you can sign in with:
-                </p>
-                <div className="p-2 bg-surface rounded border border-line font-mono text-[11px] text-ink select-all">
-                  email: <b>operator@civicclean.demo</b><br />
-                  password: <b>demo123</b>
-                </div>
-                <p className="text-[10px] text-ink-3">
-                  To provision a custom operator account in terminal: <br />
-                  <code className="text-moss">node backend/scripts/createOperator.js</code>
+                  Operator access is restricted to authorized field coordinators and dispatch supervisors. Account provisioning is managed by project administrators.
                 </p>
               </div>
             </div>
@@ -243,7 +235,7 @@ export const Login: React.FC = () => {
 
         {/* Evaluation Disclaimer */}
         <p className="text-center text-[11px] text-ink-3 mt-4">
-          PS03 Pilot Prototype · Kandivali East Pilot Zone · All uploads and transactions are stored persistently.
+          PS03 Research & Evaluation Pilot · Kandivali East & Borivali East Study Sector.
         </p>
       </div>
     </div>

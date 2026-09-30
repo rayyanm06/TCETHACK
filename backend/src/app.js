@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import path from 'path';
 import os from 'os';
+import fs from 'fs';
 import { ENV } from './config/env.js';
 import { errorHandler } from './middleware/error.js';
 
@@ -39,11 +40,27 @@ app.use(
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Static local uploads serving
+// Static local uploads serving with CORS headers
 const uploadsDir = process.env.VERCEL
   ? path.join(os.tmpdir(), 'uploads')
   : path.resolve('uploads');
-app.use('/uploads', express.static(uploadsDir));
+if (!fs.existsSync(uploadsDir)) {
+  try {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  } catch (err) {
+    console.warn('[App] Could not create uploadsDir:', err.message);
+  }
+}
+app.use(
+  '/uploads',
+  express.static(uploadsDir, {
+    setHeaders: (res) => {
+      res.set('Access-Control-Allow-Origin', '*');
+      res.set('Cross-Origin-Resource-Policy', 'cross-origin');
+      res.set('Cache-Control', 'public, max-age=86400');
+    },
+  })
+);
 
 // Health Check
 app.get('/api/health', (req, res) => {

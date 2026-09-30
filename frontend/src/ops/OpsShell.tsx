@@ -15,7 +15,7 @@ import {
   CongestionZone,
   ForecastCell,
 } from '../types/api.ts';
-import { LogOut, Table, RotateCcw } from 'lucide-react';
+import { LogOut, Table } from 'lucide-react';
 
 export type LensMode = 'now' | 'routes' | 'forecast' | 'impact';
 
@@ -33,11 +33,11 @@ export const OpsShell: React.FC = () => {
 
   // Events & ticker state
   const [events, setEvents] = useState<WasteEventSummary[]>([]);
-  const [tickerCounts, setTickerCounts] = useState({
-    reports: 16,
-    events: 13,
-    plannedStops: 7,
-  });
+  const [tickerCounts, setTickerCounts] = useState<{
+    reports: number;
+    events: number;
+    plannedStops: number;
+  } | null>(null);
 
   // Selected event for drawer
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
@@ -64,23 +64,12 @@ export const OpsShell: React.FC = () => {
     }
   };
 
-  // Initial load and 5s polling interval (§3.4)
+  // Initial load and 5s polling interval
   useEffect(() => {
     fetchEventsData();
     const interval = setInterval(fetchEventsData, 5000);
     return () => clearInterval(interval);
   }, []);
-
-  const handleResetDemo = async () => {
-    if (!window.confirm('Reset demo database to original starting baseline?')) return;
-    try {
-      await api.post('/admin/reset-demo');
-      alert('Demo data successfully reset!');
-      fetchEventsData();
-    } catch (err: any) {
-      alert('Reset failed: ' + err.message);
-    }
-  };
 
   return (
     <div className="relative w-screen h-screen overflow-hidden flex flex-col bg-paper">
@@ -122,13 +111,19 @@ export const OpsShell: React.FC = () => {
 
         {/* Far Right: Header Ticker + Queue + Profile */}
         <div className="flex items-center gap-4">
-          {/* Header Ticker: reports → events → planned stops (§6.7) */}
+          {/* Header Ticker: reports → events → planned stops */}
           <div className="hidden lg:flex items-center gap-2 px-3 py-1 rounded bg-surface-2 border border-line text-xs font-mono font-semibold text-ink-2">
-            <span className="text-ink">{tickerCounts.reports} reports</span>
-            <span className="text-ink-3">→</span>
-            <span className="text-ink">{tickerCounts.events} events</span>
-            <span className="text-ink-3">→</span>
-            <span className="text-lagoon font-bold">{tickerCounts.plannedStops} planned stops</span>
+            {tickerCounts ? (
+              <>
+                <span className="text-ink">{tickerCounts.reports} reports</span>
+                <span className="text-ink-3">→</span>
+                <span className="text-ink">{tickerCounts.events} cleanups</span>
+                <span className="text-ink-3">→</span>
+                <span className="text-lagoon font-bold">{tickerCounts.plannedStops} planned stops</span>
+              </>
+            ) : (
+              <span className="text-ink-3">Syncing operational data...</span>
+            )}
           </div>
 
           <button
@@ -138,14 +133,6 @@ export const OpsShell: React.FC = () => {
           >
             <Table className="w-4 h-4" />
             <span className="hidden sm:inline">Queue</span>
-          </button>
-
-          <button
-            onClick={handleResetDemo}
-            title="Reset Demo Baseline"
-            className="p-1.5 rounded hover:bg-surface-2 text-ink-3 hover:text-ochre"
-          >
-            <RotateCcw className="w-4 h-4" />
           </button>
 
           <div className="flex items-center gap-2 pl-2 border-l border-line">

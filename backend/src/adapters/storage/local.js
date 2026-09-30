@@ -28,7 +28,11 @@ export async function uploadLocal(fileBuffer, mimeType = 'image/jpeg') {
     }
     await fs.promises.writeFile(filePath, fileBuffer);
   } catch (err) {
-    console.warn('[Storage] Write to disk failed:', err.message);
+    console.error('[Storage] Write to disk failed:', err.message);
+    const writeErr = new Error(`Failed to persist uploaded evidence to local disk: ${err.message}`);
+    writeErr.code = 'STORAGE_WRITE_ERROR';
+    writeErr.status = 500;
+    throw writeErr;
   }
 
   return {

@@ -82,20 +82,13 @@ router.get('/geocode/reverse', async (req, res) => {
     // Graceful fallback if network is offline or Nominatim times out
   }
 
-  // Fallback based on pilot boundaries
-  let fallbackArea = 'Kandivali East / Borivali East, Mumbai';
-  if (lat >= 19.20 && lat <= 19.22 && lng >= 72.86 && lng <= 72.89) {
-    fallbackArea = 'Thakur Complex, Kandivali East, Mumbai';
-  } else if (lat > 19.22) {
-    fallbackArea = 'Borivali East, Mumbai';
-  } else if (lat < 19.20) {
-    fallbackArea = 'Akurli Road / Poisar, Kandivali East, Mumbai';
-  }
-
+  // If reverse geocoding failed or was offline, do not present a guessed locality as a verified street address
   return res.status(200).json({
-    ok: true,
-    address: `${fallbackArea} (${lat.toFixed(4)}, ${lng.toFixed(4)})`,
-    source: 'PILOT_FALLBACK',
+    ok: false,
+    address: null,
+    coordinates: { lat, lng },
+    source: 'GEOCODE_UNAVAILABLE',
+    message: 'Street address could not be resolved automatically. Please enter a landmark or street name.',
   });
 });
 
