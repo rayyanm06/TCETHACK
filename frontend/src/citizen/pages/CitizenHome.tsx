@@ -19,6 +19,7 @@ export const CitizenHome: React.FC = () => {
   });
   const [latestReport, setLatestReport] = useState<any>(null);
   const [nearbyEvents, setNearbyEvents] = useState<WasteEventSummary[]>([]);
+  const [loadError,setLoadError] = useState('');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -27,9 +28,10 @@ export const CitizenHome: React.FC = () => {
         const [impactRes, reportsRes, eventsRes] = await Promise.allSettled([
           api.get<CitizenImpactResponse>('/impact/me'),
           api.get<{ items: any[] }>('/reports/mine'),
-          api.get<{ items: WasteEventSummary[] }>('/complaints?limit=5'),
+          api.get<{ items: WasteEventSummary[] }>('/public/events'),
         ]);
 
+        if ([impactRes,reportsRes,eventsRes].some(r=>r.status==='rejected')) setLoadError('Some live information could not load. Refresh to try again.');
         if (impactRes.status === 'fulfilled') {
           setImpact(impactRes.value.totals);
         }
@@ -37,7 +39,7 @@ export const CitizenHome: React.FC = () => {
           setLatestReport(reportsRes.value.items[0]);
         }
         if (eventsRes.status === 'fulfilled') {
-          setNearbyEvents(eventsRes.value.items.slice(0, 5));
+          setNearbyEvents(eventsRes.value.items);
         }
       } catch (err) {
         console.error('Failed to load home data', err);
@@ -52,10 +54,11 @@ export const CitizenHome: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {loadError && <p role="alert" className="text-clay text-sm">{loadError}</p>}
       {/* Greeting Header */}
       <div>
         <h1 className="font-serif text-2xl font-bold text-ink">
-          Good morning, {firstName}
+          Hello, {firstName}
         </h1>
         <p className="text-xs text-ink-3 mt-0.5">
           Welcome to your local civic cleanup portal.
@@ -66,13 +69,13 @@ export const CitizenHome: React.FC = () => {
       <div className="bg-surface rounded-card border border-line p-5 shadow-sm survey-corner relative overflow-hidden">
         <div className="relative z-10">
           <span className="text-[10px] uppercase font-bold tracking-wider text-moss bg-moss-100 px-2 py-0.5 rounded-pill inline-block mb-2">
-            One-Minute Reporting
+            Photo · Location · Follow-through
           </span>
           <h2 className="font-serif text-xl sm:text-2xl font-semibold text-ink leading-snug">
-            See waste on the street?<br />Report it in under a minute.
+            See waste on the street?<br />Help get it handled correctly.
           </h2>
           <p className="text-xs text-ink-2 mt-1.5 max-w-md">
-            Your photograph helps municipal teams consolidate duplicate stops, verify urgency, and plan collections.
+            Your photograph helps operators consolidate duplicate stops, verify urgency, and plan collections.
           </p>
 
           <button
@@ -85,6 +88,10 @@ export const CitizenHome: React.FC = () => {
         </div>
       </div>
 
+      <div className="grid sm:grid-cols-2 gap-3">
+        <button onClick={()=>navigate('/report?mode=household')} className="bg-surface rounded-card border border-line p-4 text-left"><b className="font-serif text-lg">Something to dispose of at home?</b><p className="text-xs text-ink-2 mt-1">Electronics, bulky items or recyclables. Send a private request for handling review.</p></button>
+        <button onClick={()=>navigate('/guide')} className="bg-moss-100 rounded-card border border-moss/20 p-4 text-left"><b className="font-serif text-lg">Which waste goes where?</b><p className="text-xs text-ink-2 mt-1">Simple separation guidance and official disposal resources.</p></button>
+      </div>
       {/* Your Impact Strip (§6.2 & §2.2) */}
       <div
         onClick={() => navigate('/impact')}
@@ -151,7 +158,7 @@ export const CitizenHome: React.FC = () => {
                 {latestReport.addressText || 'Local area'}
               </p>
               <p className="text-[11px] text-lagoon font-medium mt-1">
-                Tap to view timeline and municipal clearance photo
+                Tap to view timeline and completion evidence
               </p>
             </div>
           </div>
@@ -163,18 +170,18 @@ export const CitizenHome: React.FC = () => {
         <div className="flex items-center justify-between mb-2.5">
           <div className="flex items-center gap-1.5 text-xs font-semibold text-ink-2 uppercase tracking-wider">
             <MapPin className="w-4 h-4 text-lagoon" />
-            <span>Active Waste Near You</span>
+            <span>Active public reports</span>
           </div>
           <span className="text-[11px] text-ink-3 font-medium">
-            {nearbyEvents.length} nearby
+            {nearbyEvents.length} shown
           </span>
         </div>
 
         <div className="h-44 rounded-card overflow-hidden border border-line relative">
           <CityMap
             events={nearbyEvents}
-            interactive={false}
-            zoom={15}
+            interactive={true}
+            zoom={11}
             height="100%"
           />
         </div>

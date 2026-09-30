@@ -9,7 +9,6 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<User>;
   register: (name: string, email: string, password: string) => Promise<User>;
   logout: () => void;
-  loginAsDemo: (role: 'OPERATOR' | 'CITIZEN', demoEmail?: string) => Promise<User>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -20,15 +19,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
-    const savedUser = localStorage.getItem('civicclean_user');
-    if (savedUser && token) {
-      try {
-        setUser(JSON.parse(savedUser));
-      } catch {
-        localStorage.removeItem('civicclean_user');
-      }
-    }
-    setLoading(false);
+    let active=true;
+    if(!token){setUser(null);setLoading(false);return;}
+    setLoading(true);
+    api.get<{user:User}>('/auth/me').then(data=>{if(active){setUser(data.user);localStorage.setItem('civicclean_user',JSON.stringify(data.user));}}).catch(()=>{if(active){api.setToken(null);setToken(null);setUser(null);localStorage.removeItem('civicclean_user');}}).finally(()=>{if(active)setLoading(false);});
+    return ()=>{active=false;};
   }, [token]);
 
   const handleAuthSuccess = (data: AuthResponse) => {
@@ -56,16 +51,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem('civicclean_user');
   };
 
-  const loginAsDemo = async (role: 'OPERATOR' | 'CITIZEN', demoEmail?: string) => {
-    let email = demoEmail;
-    if (!email) {
-      email = role === 'OPERATOR' ? 'operator@civicclean.demo' : 'asha@civicclean.demo';
-    }
-    return login(email, 'demo123');
-  };
-
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, register, logout, loginAsDemo }}>
+    <AuthContext.Provider value={{ user, token, loading, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   );

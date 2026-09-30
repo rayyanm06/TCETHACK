@@ -1,54 +1,36 @@
 import mongoose from 'mongoose';
 import { ENV } from './env.js';
-
-let memoryServerInstance = null;
-
-export async function connectDB() {
-  if (mongoose.connection.readyState >= 1) {
-    return mongoose.connection;
-  }
-
-  let uri = ENV.MONGODB_URI;
-
-  if (!uri) {
-    if (process.env.VERCEL) {
-      console.warn('[DB] Running on Vercel without MONGODB_URI. Configure MONGODB_URI in Vercel environment variables.');
-      return null;
+let memoryServerInstance;
+let connecting;
+export function validateRuntime() {
+  if (!ENV.MONGODB_URI && !ENV.ALLOW_MEMORY_DB) throw new Error('MONGODB_URI is required. Temporary databases are disabled.');
+  if (ENV.NODE_ENV === 'production') {
+    for (const name of ['JWT_SECRET', 'UPLOAD_TOKEN_SECRET']) {
+      if (!process.env[name] || process.env[name].length < 32 || process.env[name].includes('civicclean-')) throw new Error(`${name} must be a unique secret of at least 32 characters.`);
     }
-    console.log('[DB] No MONGODB_URI specified in environment. Starting embedded in-memory MongoDB...');
-    try {
-      const { MongoMemoryServer } = await import('mongodb-memory-server');
-      memoryServerInstance = await MongoMemoryServer.create({
-        instance: {
-          dbName: ENV.MONGODB_DB,
-        },
-      });
-      uri = memoryServerInstance.getUri();
-      console.log(`[DB] Embedded in-memory MongoDB running at: ${uri}`);
-    } catch (err) {
-      console.error('[DB] Failed to start MongoMemoryServer:', err.message);
-      uri = `mongodb://127.0.0.1:27017/${ENV.MONGODB_DB}`;
-    }
-  }
-
-  try {
-    await mongoose.connect(uri, {
-      dbName: ENV.MONGODB_DB,
-      autoIndex: true,
-    });
-    console.log(`[DB] Connected successfully to MongoDB: ${ENV.MONGODB_DB}`);
-    return mongoose.connection;
-  } catch (err) {
-    console.error(`[DB] Failed to connect to ${uri}:`, err.message);
-    throw err;
+    if (ENV.STORAGE_DRIVER !== 'cloudinary' || !ENV.CLOUDINARY_CLOUD_NAME || !ENV.CLOUDINARY_API_KEY || !ENV.CLOUDINARY_API_SECRET) throw new Error('Configure persistent Cloudinary storage before production startup.');
   }
 }
-
+export async function connectDB() {
+  if (mongoose.connection.readyState === 1) return mongoose.connection;
+  if (connecting) return connecting;
+  connecting = (async () => {
+    validateRuntime();
+    let uri = ENV.MONGODB_URI;
+    if (!uri) {
+      const { MongoMemoryReplSet } = await import('mongodb-memory-server');
+      memoryServerInstance = await MongoMemoryReplSet.create({replSet: {count: 1}});
+      uri = memoryServerInstance.getUri();
+    }
+    await mongoose.connect(uri, { dbName: ENV.MONGODB_DB, serverSelectionTimeoutMS: 8000 });
+    const hello = await mongoose.connection.db.admin().command({hello:1});
+    if (!hello.setName && hello.msg !== 'isdbgrid') { await mongoose.disconnect(); throw new Error('A MongoDB replica set is required for reliable multi-record transactions.'); }
+    await Promise.all(Object.values(mongoose.models).map(model=>model.init()));
+    return mongoose.connection;
+  })();
+  try { return await connecting; } finally { connecting = null; }
+}
 export async function disconnectDB() {
-  if (mongoose.connection.readyState !== 0) {
-    await mongoose.disconnect();
-  }
-  if (memoryServerInstance) {
-    await memoryServerInstance.stop();
-  }
+  await mongoose.disconnect();
+  if (memoryServerInstance) await memoryServerInstance.stop();
 }

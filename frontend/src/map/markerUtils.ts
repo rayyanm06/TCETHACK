@@ -52,6 +52,7 @@ export function createWasteMarker(
 }
 
 export function createDepotMarker(name: string) {
+  name = name.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
   const html = `
     <div class="waste-marker-wrapper marker-depot" title="${name}">
       <div class="waste-marker-body">D</div>

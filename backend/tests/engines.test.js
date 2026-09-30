@@ -180,7 +180,7 @@ describe('Routing Engine Tests', () => {
       },
     ];
 
-    const points = [depot.location, events[0].location, events[2].location];
+    const points = [depot.location, ...events.map(e=>e.location)];
     const { durations, distances } = computeFallbackMatrix(points);
 
     const plan = planCollectionRoute({
@@ -221,4 +221,19 @@ describe('Traffic Engine Tests', () => {
     const factor = getSegmentCongestionFactor(p1, p2, zones);
     assert.equal(factor, 2.0);
   });
+});
+
+
+test('Route distances use original event indices after an earlier event is excluded', () => {
+  const events=[{id:'excluded',category:'E_WASTE',estimatedWeightKg:1,priority:{score:1}},{id:'selected',category:'PAPER',estimatedWeightKg:2,priority:{score:50}}];
+  const plan=planCollectionRoute({vehicle:{capacityKg:10,acceptedCategories:['PAPER'],maxRouteMinutes:10},events,durationMatrix:[[0,10,100],[10,0,30],[120,30,0]],distanceMatrix:[[0,100,1000],[100,0,300],[1200,300,0]]});
+  assert.equal(plan.stops[0].eventId,'selected');assert.equal(plan.totals.distanceM,2200);assert.equal(plan.totals.durationMin,3.7);
+});
+test('Route respects driving-time budget and returns TIME deferrals',()=>{
+  const plan=planCollectionRoute({vehicle:{capacityKg:10,acceptedCategories:['PAPER'],maxRouteMinutes:1},events:[{id:'far',category:'PAPER',estimatedWeightKg:1,priority:{score:50}}],durationMatrix:[[0,90],[90,0]],distanceMatrix:[[0,1000],[1000,0]]});
+  assert.equal(plan.stops.length,0);assert.equal(plan.deferred[0].reason,'TIME');
+});
+test('Forecast uses the requested history length rather than hardcoded weeks',()=>{
+  const data=[1,2,3,4].flatMap(weekIndex=>Array.from({length:weekIndex},()=>({weekIndex,location:{lat:19.2,lng:72.8}})));
+  const result=computeHotspotForecast(data,4,4);assert.equal(result.forecast.cells[0].expected,3.3);assert.equal(result.forecast.weekIndex,5);
 });

@@ -1,7 +1,10 @@
+import {authenticate} from '../middleware/auth.js';
 import express from 'express';
 import { registerUser, loginUser } from '../services/authService.js';
 
 const router = express.Router();
+
+router.get('/me',authenticate,(req,res)=>res.json({user:req.user}));
 
 router.post('/register', async (req, res, next) => {
   try {

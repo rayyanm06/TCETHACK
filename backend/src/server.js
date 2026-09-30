@@ -10,7 +10,7 @@ async function startServer() {
 
     // Check if database needs initial seeding
     const userCount = await User.countDocuments();
-    if (userCount === 0) {
+    if (ENV.DEMO_MODE && userCount === 0) {
       console.log('[Server] Database is empty. Running initial demo seed...');
       await runSeed();
     }

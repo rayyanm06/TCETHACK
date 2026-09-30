@@ -1,4 +1,6 @@
 import express from 'express';
+import mongoose from 'mongoose';
+import rateLimit from 'express-rate-limit';
 import cors from 'cors';
 import helmet from 'helmet';
 import path from 'path';
@@ -26,11 +28,8 @@ app.use(
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow localhost and specified CORS origins
-      if (!origin || origin.includes('localhost') || origin.includes('127.0.0.1')) {
-        return callback(null, true);
-      }
-      return callback(null, true);
+      if (!origin || ENV.CORS_ORIGINS.includes(origin)) return callback(null, true);
+      return callback(Object.assign(new Error('This origin is not allowed.'), { status: 403, code: 'ORIGIN_DENIED' }));
     },
     credentials: true,
   })
@@ -47,14 +46,18 @@ app.use('/uploads', express.static(uploadsDir));
 
 // Health Check
 app.get('/api/health', (req, res) => {
-  res.status(200).json({
-    ok: true,
-    status: 'HEALTHY',
+  const ready = mongoose.connection.readyState === 1;
+  res.status(ready ? 200 : 503).json({
+    ok: ready,
+    status: ready ? 'READY' : 'DATABASE_UNAVAILABLE',
     service: 'CivicClean API',
     timestamp: new Date().toISOString(),
   });
 });
 
+app.use('/api/auth', rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: 'draft-7', legacyHeaders: false }));
+app.use(['/api/classify', '/api/uploads'], rateLimit({ windowMs: 60 * 1000, limit: 12 }));
+app.use(['/api/reports', '/api/complaints'], rateLimit({ windowMs: 60 * 1000, limit: 120 }));
 // Mount Routes
 app.use('/api/auth', authRoutes);
 app.use('/api', configRoutes);

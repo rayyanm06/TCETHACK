@@ -7,7 +7,7 @@ const router = express.Router();
 
 router.post('/admin/reset-demo', authenticate, requireRole(['OPERATOR']), async (req, res, next) => {
   try {
-    if (!ENV.ALLOW_DEMO_RESET && ENV.NODE_ENV === 'production') {
+    if (!ENV.ALLOW_DEMO_RESET) {
       return res.status(403).json({
         error: { code: 'FORBIDDEN', message: 'Demo reset disabled in production mode.' },
       });

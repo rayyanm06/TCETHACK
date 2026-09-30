@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './lib/auth.tsx';
 
 // Citizen Views
+import { DisposalGuide } from './citizen/pages/DisposalGuide';
 import { Login } from './citizen/pages/Login.tsx';
 import { CitizenShell } from './citizen/components/CitizenShell.tsx';
 import { CitizenHome } from './citizen/pages/CitizenHome.tsx';
@@ -56,6 +57,7 @@ export const App: React.FC = () => {
         }
       >
         <Route index element={<CitizenHome />} />
+        <Route path="guide" element={<DisposalGuide />} />
         <Route path="report" element={<ReportWaste />} />
         <Route path="reports" element={<MyReports />} />
         <Route path="reports/:id" element={<ReportDetails />} />

@@ -1,3 +1,4 @@
+import { WasteEvent } from '../models/WasteEvent.js';
 import express from 'express';
 import multer from 'multer';
 import { authenticate } from '../middleware/auth.js';
@@ -16,6 +17,14 @@ const upload = multer({
 });
 
 const router = express.Router();
+
+// No household coordinates, identities, or uploaded evidence are exposed here.
+router.get('/public/events', authenticate, async (req, res, next) => {
+  try {
+    const events = await WasteEvent.find({reportContext: {$ne:'HOUSEHOLD'}, status: {$in:['SUBMITTED','VERIFIED','SCHEDULED']}}).select('code category status location firstReportedAt supportCount').sort({createdAt:-1}).limit(200).lean();
+    res.json({items: events.map(e => ({id:String(e._id), code:e.code, category:e.category, status:e.status, location:{lat:e.location.coordinates[1],lng:e.location.coordinates[0]}, firstReportedAt:e.firstReportedAt, supportCount:e.supportCount}))});
+  } catch (err) { next(err); }
+});
 
 // POST /api/classify
 router.post('/classify', authenticate, upload.single('image'), async (req, res, next) => {

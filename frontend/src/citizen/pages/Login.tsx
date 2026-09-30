@@ -5,7 +5,7 @@ import { ShieldCheck, UserCheck, ArrowRight, AlertCircle } from 'lucide-react';
 
 export const Login: React.FC = () => {
   const navigate = useNavigate();
-  const { login, register, loginAsDemo } = useAuth();
+  const { login, register } = useAuth();
 
   const [isRegister, setIsRegister] = useState(false);
   const [email, setEmail] = useState('');
@@ -28,19 +28,6 @@ export const Login: React.FC = () => {
       }
     } catch (err: any) {
       setError(err.message || 'Authentication failed. Please check your credentials.');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleQuickDemo = async (role: 'OPERATOR' | 'CITIZEN', demoEmail?: string) => {
-    setSubmitting(true);
-    setError(null);
-    try {
-      const user = await loginAsDemo(role, demoEmail);
-      navigate(user.role === 'OPERATOR' ? '/ops' : '/');
-    } catch (err: any) {
-      setError(err.message || 'Demo login failed.');
     } finally {
       setSubmitting(false);
     }
@@ -106,6 +93,9 @@ export const Login: React.FC = () => {
               </label>
               <input
                 type="password"
+                minLength={isRegister ? 10 : undefined}
+                maxLength={72}
+                autoComplete={isRegister ? "new-password" : "current-password"}
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -134,41 +124,7 @@ export const Login: React.FC = () => {
             </button>
           </div>
 
-          {/* Quick Demo Access Bar (§3.1) */}
-          <div className="mt-8 pt-6 border-t border-line">
-            <p className="text-[11px] uppercase font-bold tracking-wider text-ink-3 text-center mb-3">
-              One-Click Demo Profiles
-            </p>
-            <div className="grid grid-cols-1 gap-2">
-              <button
-                type="button"
-                disabled={submitting}
-                onClick={() => handleQuickDemo('OPERATOR')}
-                className="w-full py-2.5 px-3 rounded-card bg-surface-2 hover:bg-line/60 border border-line text-xs font-semibold text-ink flex items-center justify-center gap-2 transition"
-              >
-                <ShieldCheck className="w-4 h-4 text-lagoon" />
-                <span>Continue as Demo Operator (Dilip)</span>
-              </button>
-              <button
-                type="button"
-                disabled={submitting}
-                onClick={() => handleQuickDemo('CITIZEN', 'asha@civicclean.demo')}
-                className="w-full py-2.5 px-3 rounded-card bg-surface-2 hover:bg-line/60 border border-line text-xs font-semibold text-ink flex items-center justify-center gap-2 transition"
-              >
-                <UserCheck className="w-4 h-4 text-moss" />
-                <span>Continue as Asha K. (Seeded History & Credits)</span>
-              </button>
-              <button
-                type="button"
-                disabled={submitting}
-                onClick={() => handleQuickDemo('CITIZEN', 'ravi@civicclean.demo')}
-                className="w-full py-2.5 px-3 rounded-card bg-surface-2 hover:bg-line/60 border border-line text-xs font-semibold text-ink flex items-center justify-center gap-2 transition"
-              >
-                <UserCheck className="w-4 h-4 text-ochre" />
-                <span>Continue as Ravi M. (Fresh Live Report Demo)</span>
-              </button>
-            </div>
-          </div>
+
         </div>
       </div>
     </div>

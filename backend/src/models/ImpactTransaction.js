@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { liveOnly } from './liveOnly.js';
 
 const impactTransactionSchema = new mongoose.Schema(
   {
@@ -34,4 +35,5 @@ impactTransactionSchema.index({ citizenId: 1, status: 1 });
 impactTransactionSchema.index({ complaintId: 1 });
 impactTransactionSchema.index({ reportId: 1, type: 1 }, { unique: true });
 
+impactTransactionSchema.plugin(liveOnly);
 export const ImpactTransaction = mongoose.model('ImpactTransaction', impactTransactionSchema);

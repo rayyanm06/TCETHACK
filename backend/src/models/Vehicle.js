@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { liveOnly } from './liveOnly.js';
 
 const vehicleSchema = new mongoose.Schema(
   {
@@ -23,4 +24,5 @@ const vehicleSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+vehicleSchema.plugin(liveOnly);
 export const Vehicle = mongoose.model('Vehicle', vehicleSchema);

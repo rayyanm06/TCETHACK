@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { liveOnly } from './liveOnly.js';
 
 const wasteEventSchema = new mongoose.Schema(
   {
@@ -57,6 +58,14 @@ const wasteEventSchema = new mongoose.Schema(
       sentence: { type: String, default: '' },
       computedAt: { type: Date },
     },
+    reportContext: { type: String, enum: ['PUBLIC_SPACE', 'HOUSEHOLD'], default: 'PUBLIC_SPACE' },
+    itemDescription: { type: String, maxlength: 120 },
+    itemCount: { type: Number, min: 1, max: 100 },
+    requiresSpecialHandling: { type: Boolean, default: false },
+    handoff: {
+      facilityName: String, reference: String, sourceUrl: String,
+      confirmedAt: Date, confirmedBy: {type: mongoose.Schema.Types.ObjectId, ref: 'User'},
+    },
     isSeed: { type: Boolean, default: false },
   },
   { timestamps: true }
@@ -66,4 +75,5 @@ wasteEventSchema.index({ location: '2dsphere' });
 wasteEventSchema.index({ status: 1, category: 1 });
 wasteEventSchema.index({ assignedRouteId: 1 });
 
+wasteEventSchema.plugin(liveOnly);
 export const WasteEvent = mongoose.model('WasteEvent', wasteEventSchema);

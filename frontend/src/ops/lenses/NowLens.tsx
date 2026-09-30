@@ -18,12 +18,12 @@ export const NowLens: React.FC<NowLensProps> = ({ events, onSelectEvent, selecte
     return (b.priority?.score || 0) - (a.priority?.score || 0);
   });
 
-  const needsAttentionList = sortedEvents.filter((e) => e.status !== 'RESOLVED');
+  const needsAttentionList = sortedEvents.filter((e) => ['SUBMITTED','VERIFIED','SCHEDULED'].includes(e.status));
 
   return (
     <>
       {/* Left Rail: Needs Attention Queue (§6.7) */}
-      <aside className="absolute left-0 top-14 bottom-0 z-20 w-full sm:w-[360px] bg-surface/95 backdrop-blur-md border-r border-line shadow-panel flex flex-col survey-corner">
+      <aside className="absolute left-0 top-0 bottom-0 z-20 w-full sm:w-[360px] bg-surface/95 backdrop-blur-md border-r border-line shadow-panel flex flex-col survey-corner">
         <div className="p-3.5 border-b border-line flex items-center justify-between bg-surface-2/30">
           <div className="flex items-center gap-2">
             <span className="font-serif text-sm font-bold text-ink">Needs Attention</span>
@@ -37,6 +37,7 @@ export const NowLens: React.FC<NowLensProps> = ({ events, onSelectEvent, selecte
 
         {/* Scrollable Attention Cards List */}
         <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
+          {!needsAttentionList.length && <p className="text-sm p-4 text-ink-2">No active requests yet. Real citizen reports will appear here.</p>}
           {needsAttentionList.map((ev) => {
             const isSelected = selectedEventId === ev.id;
             const isSubmitted = ev.status === 'SUBMITTED';
@@ -84,11 +85,11 @@ export const NowLens: React.FC<NowLensProps> = ({ events, onSelectEvent, selecte
 
                     {isSubmitted ? (
                       <span className="inline-block text-[10px] font-bold text-ochre bg-ochre-100 px-1.5 py-0.2 rounded">
-                        ⚠️ Needs Municipal Verification
+                        ⚠️ Needs Operator Review
                       </span>
                     ) : (
                       <p className="text-[11px] text-ink-3 line-clamp-1 italic">
-                        {ev.priority?.sentence || `${ev.estimatedWeightKg || 50} kg load`}
+                        {ev.priority?.sentence || `${ev.estimatedWeightKg ?? 'Unestimated'} kg load`}
                       </p>
                     )}
                   </div>

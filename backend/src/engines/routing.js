@@ -49,13 +49,13 @@ export function computeFallbackMatrix(
 
 /**
  * Solves 0/1 knapsack to maximise priority score within vehicle capacity.
- * Weights are discretised to 10kg increments for efficiency.
+ * Weights are discretised to 1kg increments for efficiency.
  * @param {Array<Object>} candidates
  * @param {number} capacityKg
  * @returns {{selected: Array<Object>, rejected: Array<Object>}}
  */
 export function solveCapacityKnapsack(candidates, capacityKg) {
-  const unit = 10;
+  const unit = 1;
   const maxW = Math.floor(capacityKg / unit);
   const n = candidates.length;
 
@@ -283,8 +283,28 @@ export function planCollectionRoute({
     eligible.push(ev);
   }
 
-  // Step 2: Capacity Knapsack
-  const { selected, rejected } = solveCapacityKnapsack(eligible, capacityKg);
+  // Matrices always correspond to [depot, ...events], before any filtering.
+  if (![durationMatrix,distanceMatrix].every(m=>m?.length === events.length+1 && m.every(row=>row.length===events.length+1 && row.every(n=>Number.isFinite(n)&&n>=0)))) throw new Error('Routing matrix does not match the input events.');
+  const originalDurations = durationMatrix, originalDistances = distanceMatrix, originalBase = baseDurationMatrix || durationMatrix;
+  const eventIndex = new Map(events.map((e,i)=>[String(e._id||e.id),i+1]));
+  const subMatrix = (matrix, chosen) => {const ids=[0,...chosen.map(e=>eventIndex.get(String(e._id||e.id)))];return ids.map(i=>ids.map(j=>matrix[i][j]));};
+  // Step 2: Capacity selection, then enforce the vehicle's driving-time budget.
+  let { selected, rejected } = solveCapacityKnapsack(eligible, capacityKg);
+  while(selected.length) {
+    const dm=subMatrix(originalDurations,selected);
+    const order=sequenceStops(selected,dm);
+    let previous=0,total=0;
+    for(const index of order){total+=dm[previous][index];previous=index;}
+    total+=dm[previous][0];
+    if(total <= (vehicle.maxRouteMinutes || 180)*60) break;
+    // Defer the lowest-priority candidate and recompute a feasible sequence.
+    const lowest=selected.reduce((best,e,i)=> (e.priority?.score||0)<(selected[best].priority?.score||0)?i:best,0);
+    const [removed]=selected.splice(lowest,1);
+    deferred.push({eventId:String(removed._id||removed.id),reason:'TIME',detail:`Does not fit the ${vehicle.maxRouteMinutes || 180}-minute driving budget`});
+  }
+  durationMatrix=subMatrix(originalDurations,selected);
+  distanceMatrix=subMatrix(originalDistances,selected);
+  baseDurationMatrix=subMatrix(originalBase,selected);
 
   let plannedLoadKg = 0;
   for (const s of selected) {
@@ -318,9 +338,7 @@ export function planCollectionRoute({
     };
   }
 
-  // Map selected nodes to matrix indices
-  // Index 0 in matrix is depot. Selected items are at indices 1 .. selected.length
-  // (Assuming durationMatrix was built over [depot, ...selected])
+  // Reduced matrices now correspond exactly to [depot, ...selected].
   const orderedIndices = sequenceStops(selected, durationMatrix);
 
   // Construct stops array

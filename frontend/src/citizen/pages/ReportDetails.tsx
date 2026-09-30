@@ -17,7 +17,7 @@ export const ReportDetails: React.FC = () => {
     async function loadReport() {
       try {
         const res = await api.get<any>(`/reports/${id}`);
-        setData(res);
+        setData(res);setError(null);
       } catch (err: any) {
         setError(err.message || 'Report not found.');
       } finally {
@@ -25,6 +25,8 @@ export const ReportDetails: React.FC = () => {
       }
     }
     loadReport();
+    const interval=setInterval(loadReport,10000);
+    return ()=>clearInterval(interval);
   }, [id]);
 
   if (loading) {
@@ -49,6 +51,7 @@ export const ReportDetails: React.FC = () => {
 
   return (
     <div className="space-y-4">
+      {data.handling && <section className="bg-surface p-4 rounded-card border border-line text-sm"><b>{data.handling.title}</b><p className="mt-2 text-ink-2">{data.handling.message}</p>{complaint.handoff?.facilityName && <p className="mt-2">Operator-recorded handoff: {complaint.handoff.facilityName} · Reference {complaint.handoff.reference}</p>}</section>}
       <button
         onClick={() => navigate('/reports')}
         className="flex items-center gap-1.5 text-xs font-semibold text-ink-2 hover:text-ink"
@@ -90,7 +93,7 @@ export const ReportDetails: React.FC = () => {
         <div className="bg-moss-100/60 border border-moss/30 rounded-card p-4 space-y-3">
           <div className="flex items-center gap-2 text-moss-700 font-semibold text-xs">
             <CheckCircle2 className="w-4 h-4" />
-            <span>Municipal Clearance Verification</span>
+            <span>Operator-recorded completion</span>
           </div>
 
           {closure.photoUrl && (
@@ -108,7 +111,7 @@ export const ReportDetails: React.FC = () => {
           )}
 
           <div className="text-[11px] text-ink-3">
-            Cleared on {new Date(closure.resolvedAt).toLocaleString('en-IN', {
+            Completion recorded on {new Date(closure.resolvedAt).toLocaleString('en-IN', {
               day: 'numeric',
               month: 'short',
               hour: '2-digit',

@@ -1,3 +1,4 @@
+import { DISPOSAL_SOURCES, handlingFor } from '../services/disposalService.js';
 import express from 'express';
 import { THRESHOLDS } from '../config/thresholds.js';
 import { ENV } from '../config/env.js';
@@ -13,14 +14,16 @@ router.get('/config', (req, res) => {
       FALLBACK_SPEED_KMH: THRESHOLDS.FALLBACK_SPEED_KMH,
       FALLBACK_DETOUR: THRESHOLDS.FALLBACK_DETOUR,
     },
-    depot: THRESHOLDS.DEPOT_COORDINATES,
+    disposalSources: DISPOSAL_SOURCES,
+    disposalGuides: THRESHOLDS.CATEGORIES.map(category => ({category, ...handlingFor(category)})),
     categories: THRESHOLDS.CATEGORIES,
     categoryLabels: THRESHOLDS.CATEGORY_LABELS,
     serviceAreaBbox: THRESHOLDS.SERVICE_AREA_BBOX,
     creditValues: THRESHOLDS.CREDIT_VALUES,
     features: {
-      simulatedTraffic: true,
-      forecast: 'BASELINE_SYNTHETIC',
+      demoMode: ENV.DEMO_MODE,
+      simulatedTraffic: ENV.DEMO_MODE,
+      forecast: 'REAL_HISTORY_ONLY',
       visionProvider: ENV.VISION_PROVIDER,
       storageDriver: ENV.STORAGE_DRIVER,
     },

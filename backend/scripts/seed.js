@@ -21,6 +21,8 @@ import {
 } from '../seed/demo.data.js';
 
 export async function runSeed(isReset = false) {
+if (process.env.NODE_ENV === 'production' || process.env.DEMO_MODE !== 'true' || !String(process.env.MONGODB_DB || '').endsWith('_demo')) throw new Error('Demo seeding is allowed only with DEMO_MODE=true and a database name ending in _demo outside production.');
+
   console.log('[Seed] Starting database seeding process...');
   await connectDB();
 

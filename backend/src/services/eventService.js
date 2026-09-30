@@ -1,3 +1,9 @@
+import { z } from 'zod';
+import { atomic } from '../utils/atomic.js';
+import { fail } from '../utils/validation.js';
+import { storeEvidence, readEvidence } from './uploadEvidence.js';
+import { requiresHandoff, handlingFor } from './disposalService.js';
+import { THRESHOLDS } from '../config/thresholds.js';
 import { WasteEvent } from '../models/WasteEvent.js';
 import { Report } from '../models/Report.js';
 import { StatusEvent } from '../models/StatusEvent.js';
@@ -44,6 +50,9 @@ export async function getOperatorEvents(query = {}) {
       : ev.location;
 
     return {
+      reportContext: ev.reportContext,
+      requiresSpecialHandling: ev.requiresSpecialHandling,
+      handling: handlingFor(ev.category, ev.requiresSpecialHandling, ev.reportContext),
       id: ev._id.toString(),
       code: ev.code,
       location: loc,
@@ -66,9 +75,9 @@ export async function getOperatorEvents(query = {}) {
   // Calculate ticker counts
   const totalReports = await Report.countDocuments();
   const totalEvents = await WasteEvent.countDocuments({ status: { $ne: 'REJECTED' } });
-  const activeRoutes = await Route.find({ status: { $in: ['ASSIGNED', 'IN_PROGRESS'] } }).lean();
+  const activeRoutes = await Route.find({ status: { $in: ['ASSIGNED', 'IN_PROGRESS'] } }).populate('vehicleId').lean();
   let plannedStops = 0;
-  for (const r of activeRoutes) {
+  for (const r of activeRoutes.filter(r => r.vehicleId)) {
     plannedStops += (r.stops || []).filter((s) => s.state === 'PENDING').length;
   }
 
@@ -147,6 +156,8 @@ export async function getOperatorEventById(eventId) {
       ...event,
       id: event._id.toString(),
     },
+    handling: handlingFor(event.category, event.requiresSpecialHandling, event.reportContext),
+    requiresHandoff: requiresHandoff(event),
     photos,
     linkedReports,
     timeline,
@@ -161,7 +172,9 @@ export async function getOperatorEventById(eventId) {
   };
 }
 
-export async function updateOperatorEvent(eventId, data, userId) {
+export function updateOperatorEvent(eventId, data, userId) { return atomic(() => updateAtomic(eventId, data, userId)); }
+async function updateAtomic(eventId, data, userId) {
+  data = z.object({ category: z.enum(THRESHOLDS.CATEGORIES).optional(), severity: z.number().int().min(1).max(3).optional(), estimatedWeightKg: z.number().finite().positive().max(10000).optional(), sensitiveSite: z.enum(['NONE','SCHOOL','HOSPITAL','MARKET','DRAIN']).optional(), verify: z.boolean().optional(), reject: z.object({reason: z.string().trim().min(5).max(500)}).optional(), requiresSpecialHandling: z.boolean().optional() }).strict().parse(data);
   const event = await WasteEvent.findById(eventId);
   if (!event) {
     const err = new Error('Waste event not found.');
@@ -170,7 +183,12 @@ export async function updateOperatorEvent(eventId, data, userId) {
     throw err;
   }
 
+  if (!['SUBMITTED','VERIFIED'].includes(event.status)) fail('This event cannot be edited in its current state.', 'INVALID_TRANSITION', 409);
+  if (data.verify && event.status !== 'SUBMITTED') fail('Event was already verified.', 'INVALID_TRANSITION', 409);
+  if (data.verify && data.reject) fail('Choose either verify or reject.');
+  const previousStatus = event.status;
   const impactSummary = { verified: 0, rejected: 0 };
+  if (data.requiresSpecialHandling !== undefined) event.requiresSpecialHandling = data.requiresSpecialHandling;
 
   // 1. Rejection path
   if (data.reject) {
@@ -181,7 +199,7 @@ export async function updateOperatorEvent(eventId, data, userId) {
     await StatusEvent.create({
       entityType: 'COMPLAINT',
       entityId: event._id,
-      from: event.status,
+      from: previousStatus,
       to: 'REJECTED',
       actorId: userId,
       actorRole: 'OPERATOR',
@@ -191,7 +209,7 @@ export async function updateOperatorEvent(eventId, data, userId) {
     // Reject all pending transactions
     const pendingTx = await ImpactTransaction.find({
       complaintId: event._id,
-      status: TRANSACTION_STATUSES.PENDING,
+      status: {$in: [TRANSACTION_STATUSES.PENDING, TRANSACTION_STATUSES.VERIFIED]},
     });
     for (const tx of pendingTx) {
       tx.status = TRANSACTION_STATUSES.REJECTED;
@@ -223,6 +241,7 @@ export async function updateOperatorEvent(eventId, data, userId) {
 
   // 3. Verification action
   if (data.verify === true) {
+    if (event.category === 'UNKNOWN' && !event.requiresSpecialHandling) fail('Choose a category or send for specialist review.');
     if (!event.severity) {
       const err = new Error('Severity level (S1, S2, or S3) is required to verify an event.');
       err.status = 400;
@@ -307,8 +326,13 @@ export async function updateOperatorEvent(eventId, data, userId) {
   return { event, impactSummary };
 }
 
-export async function resolveOperatorEvent(eventId, data, userId) {
-  const { to, note, closurePhoto } = data;
+export function resolveOperatorEvent(eventId, data, userId) { return atomic(() => resolveAtomic(eventId, data, userId)); }
+async function resolveAtomic(eventId, data, userId) {
+  const { to, note, closurePhoto, handoff } = z.object({
+    to: z.literal('RESOLVED'), note: z.string().trim().min(10).max(1000),
+    closurePhoto: z.object({uploadToken: z.string().min(10)}).passthrough(),
+    handoff: z.object({facilityName: z.string().trim().min(3).max(150), reference: z.string().trim().min(3).max(150), sourceUrl: z.string().url().max(500).refine(v => v.startsWith('https://'))}).optional(),
+  }).parse(data);
 
   if (to !== 'RESOLVED') {
     const err = new Error('Invalid status transition.');
@@ -325,6 +349,11 @@ export async function resolveOperatorEvent(eventId, data, userId) {
     throw err;
   }
 
+  const specialist = requiresHandoff(event);
+  if (event.status !== 'SCHEDULED' && !(event.status === 'VERIFIED' && specialist)) fail('Verify and assign collection before resolving this event.', 'INVALID_TRANSITION', 409);
+  if (specialist && !handoff) fail('Record the receiving service, receipt/reference, and source URL before closing this request.', 'HANDOFF_REQUIRED');
+  const evidence = await readEvidence(closurePhoto.uploadToken, userId, 'CLOSURE', String(eventId));
+  if (specialist) event.handoff = {...handoff, confirmedAt: new Date(), confirmedBy: userId};
   const prevStatus = event.status;
   event.status = 'RESOLVED';
   event.resolvedAt = new Date();
@@ -332,8 +361,8 @@ export async function resolveOperatorEvent(eventId, data, userId) {
   event.closureNote = note || '';
 
   if (closurePhoto) {
-    event.closurePhotoUrl = closurePhoto.imageUrl;
-    event.closurePublicId = closurePhoto.imagePublicId;
+    event.closurePhotoUrl = evidence.imageUrl;
+    event.closurePublicId = evidence.imagePublicId;
   }
 
   await event.save();
@@ -380,7 +409,7 @@ export async function resolveOperatorEvent(eventId, data, userId) {
       type: TRANSACTION_TYPES.RESOLUTION_BONUS,
       credits: CREDIT_VALUES.RESOLUTION_PRIMARY_BONUS,
       status: TRANSACTION_STATUSES.VERIFIED,
-      reason: 'Waste cleared and resolved by municipal collection team',
+      reason: specialist ? 'Receiving service handoff recorded by operator' : 'Clearance evidence recorded by operator',
       verifiedAt: new Date(),
     });
   }
@@ -414,11 +443,5 @@ export async function resolveOperatorEvent(eventId, data, userId) {
 }
 
 export async function uploadClosurePhoto(fileBuffer, mimeType, userId) {
-  const storageResult = await uploadImage(fileBuffer, mimeType);
-  const uploadToken = signUploadToken(storageResult.imagePublicId, userId);
-  return {
-    imageUrl: storageResult.imageUrl,
-    imagePublicId: storageResult.imagePublicId,
-    uploadToken,
-  };
+  return storeEvidence(fileBuffer, mimeType, userId, 'CLOSURE');
 }

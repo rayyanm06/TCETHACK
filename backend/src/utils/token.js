@@ -40,7 +40,7 @@ export function verifyUploadToken(token, expectedUserId) {
 
     // Check expiry (30 min)
     const timestamp = Number(timestampStr);
-    if (Date.now() - timestamp > 30 * 60 * 1000) return false;
+    if (!Number.isFinite(timestamp) || timestamp > Date.now() + 30000 || Date.now() - timestamp > 30 * 60 * 1000) return false;
 
     const payload = `${publicId}:${userId}:${timestampStr}`;
     const expectedHmac = crypto
@@ -48,7 +48,8 @@ export function verifyUploadToken(token, expectedUserId) {
       .update(payload)
       .digest('hex');
 
-    return hmac === expectedHmac;
+    if (hmac.length !== expectedHmac.length || !crypto.timingSafeEqual(Buffer.from(hmac), Buffer.from(expectedHmac))) return false;
+    return publicId;
   } catch (err) {
     return false;
   }

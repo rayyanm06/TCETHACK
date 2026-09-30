@@ -1,4 +1,9 @@
 import crypto from 'crypto';
+import { atomic } from '../utils/atomic.js';
+import { reportSchema, coordinatesSchema, fail } from '../utils/validation.js';
+import { storeEvidence, readEvidence } from './uploadEvidence.js';
+import { areCategoriesCompatible } from '../engines/duplicates.js';
+import { handlingFor } from './disposalService.js';
 import { Report } from '../models/Report.js';
 import { WasteEvent } from '../models/WasteEvent.js';
 import { StatusEvent } from '../models/StatusEvent.js';
@@ -12,43 +17,10 @@ import { calculateSupportCredits, CREDIT_VALUES, TRANSACTION_STATUSES, TRANSACTI
 import { isInsideBoundingBox, haversineDistance } from '../engines/geo.js';
 import { THRESHOLDS } from '../config/thresholds.js';
 
-export async function classifyUploadedPhoto(fileBuffer, mimeType, userId) {
-  if (!fileBuffer || fileBuffer.length === 0) {
-    const err = new Error('No image provided.');
-    err.status = 400;
-    err.code = 'VALIDATION_ERROR';
-    throw err;
-  }
-
-  if (fileBuffer.length > 5 * 1024 * 1024) {
-    const err = new Error('Image exceeds 5MB size limit.');
-    err.status = 413;
-    err.code = 'FILE_TOO_LARGE';
-    throw err;
-  }
-
-  // Calculate SHA-256 hash of image
-  const imageHash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
-
-  // Upload to storage & classify via vision model in parallel
-  const [storageResult, aiResult] = await Promise.all([
-    uploadImage(fileBuffer, mimeType),
-    classifyImage(fileBuffer, mimeType),
-  ]);
-
-  const uploadToken = signUploadToken(storageResult.imagePublicId, userId);
-
-  return {
-    imageUrl: storageResult.imageUrl,
-    imagePublicId: storageResult.imagePublicId,
-    uploadToken,
-    imageHash,
-    ai: aiResult,
-  };
-}
+export async function classifyUploadedPhoto(buffer, mime, userId) { return storeEvidence(buffer, mime, userId, 'REPORT'); }
 
 export async function findNearbyCandidates(lat, lng, category) {
-  const coord = { lat: Number(lat), lng: Number(lng) };
+  const coord = coordinatesSchema.parse({ lat: Number(lat), lng: Number(lng) });
   if (isNaN(coord.lat) || isNaN(coord.lng)) {
     const err = new Error('Invalid coordinates.');
     err.status = 400;
@@ -57,9 +29,13 @@ export async function findNearbyCandidates(lat, lng, category) {
   }
 
   const activeEvents = await WasteEvent.find({
+    location: {$geoWithin: {$centerSphere:[[coord.lng,coord.lat],THRESHOLDS.DUP_RADIUS_M/6371000]}},
+    firstReportedAt: {$gte:new Date(Date.now()-THRESHOLDS.DUP_WINDOW_DAYS*86400000)},
+    reportContext: {$ne: 'HOUSEHOLD'},
     status: { $in: ['SUBMITTED', 'VERIFIED', 'SCHEDULED'] },
-  }).lean();
+  }).populate('primaryReportId', 'imageUrl').lean();
 
+  for (const event of activeEvents) event.photoUrl = event.primaryReportId?.imageUrl;
   const candidates = findDuplicateCandidates({
     location: coord,
     category,
@@ -75,7 +51,14 @@ export async function findNearbyCandidates(lat, lng, category) {
   };
 }
 
-export async function createPrimaryReport(data, userId) {
+export function createPrimaryReport(data, userId) { return atomic(() => createPrimaryReportAtomic(data, userId)); }
+async function createPrimaryReportAtomic(data, userId) {
+  data = reportSchema.parse(data);
+  const prior = await Report.findOne({citizenId:userId,requestId:data.requestId});
+  if (prior) return {report:prior,complaint:await WasteEvent.findById(prior.complaintId),role:prior.role,impact:await ImpactTransaction.find({reportId:prior._id})};
+  const evidence = await readEvidence(data.uploadToken, userId, 'REPORT', data.requestId);
+  data = {...data, ...evidence};
+  if (data.reportContext === 'HOUSEHOLD' && (!data.itemDescription || !data.itemCount)) fail('Describe the items and quantity for household disposal.');
   const {
     requestId,
     uploadToken,
@@ -116,7 +99,7 @@ export async function createPrimaryReport(data, userId) {
   }
 
   // 3. Verify coordinates inside service area
-  const coord = { lat: Number(location?.lat), lng: Number(location?.lng) };
+  const coord = coordinatesSchema.parse({lat: location?.lat, lng: location?.lng});
   if (!isInsideBoundingBox(coord, THRESHOLDS.SERVICE_AREA_BBOX)) {
     const err = new Error('This location is outside the current service area.');
     err.status = 400;
@@ -134,7 +117,7 @@ export async function createPrimaryReport(data, userId) {
   }
 
   // 5. Check duplicate candidates unless citizen explicitly chose SEPARATE
-  if (duplicateDecision !== 'SEPARATE') {
+  if (data.reportContext !== 'HOUSEHOLD' && duplicateDecision !== 'SEPARATE') {
     const { candidates } = await findNearbyCandidates(coord.lat, coord.lng, citizenCategory);
     if (candidates.length > 0) {
       const err = new Error('Possible duplicate reports detected in this vicinity.');
@@ -146,8 +129,7 @@ export async function createPrimaryReport(data, userId) {
   }
 
   // 6. Generate next sequential event code (WE-XXXX)
-  const count = await WasteEvent.countDocuments();
-  const code = `WE-${String(count + 1).padStart(4, '0')}`;
+  const code = `WE-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
 
   const categoryCorrected =
     ai?.status === 'OK' &&
@@ -157,6 +139,10 @@ export async function createPrimaryReport(data, userId) {
   // 7. Create WasteEvent
   const event = await WasteEvent.create({
     code,
+    reportContext: data.reportContext,
+    itemDescription: data.itemDescription,
+    itemCount: data.itemCount,
+    requiresSpecialHandling: data.requiresSpecialHandling,
     location: {
       type: 'Point',
       coordinates: [coord.lng, coord.lat],
@@ -188,7 +174,7 @@ export async function createPrimaryReport(data, userId) {
     addressText: event.addressText,
     aiSuggestedCategory: ai?.category,
     aiShortReason: ai?.shortReason,
-    aiStatus: ai?.status || 'OK',
+    aiStatus: ai?.status || 'UNAVAILABLE',
     aiProvider: ai?.provider,
     citizenCategory,
     categoryCorrected,
@@ -250,7 +236,15 @@ export async function createPrimaryReport(data, userId) {
   };
 }
 
-export async function supportExistingEvent(complaintId, data, userId) {
+export function supportExistingEvent(complaintId, data, userId) { return atomic(() => supportAtomic(complaintId, data, userId)); }
+async function supportAtomic(complaintId, data, userId) {
+  data = reportSchema.parse(data);
+  const prior = await Report.findOne({citizenId:userId,requestId:data.requestId});
+  if (prior) {
+    if(String(prior.complaintId)!==String(complaintId)) fail('This request ID was already used for another report.','IDEMPOTENCY_CONFLICT',409);
+    return {report:prior,complaint:await WasteEvent.findById(prior.complaintId),role:prior.role,impact:await ImpactTransaction.find({reportId:prior._id})};
+  }
+  data = {...data, ...await readEvidence(data.uploadToken, userId, 'REPORT', data.requestId)};
   const {
     uploadToken,
     imageUrl,
@@ -282,13 +276,16 @@ export async function supportExistingEvent(complaintId, data, userId) {
     throw err;
   }
 
-  if (event.status === 'RESOLVED' || event.status === 'REJECTED') {
+  if (!['SUBMITTED', 'VERIFIED', 'SCHEDULED'].includes(event.status)) {
     const err = new Error('This waste incident has already been closed.');
     err.status = 409;
     err.code = 'EVENT_CLOSED';
     throw err;
   }
 
+  if (event.reportContext === 'HOUSEHOLD' || data.reportContext === 'HOUSEHOLD') fail('Household requests cannot be supported publicly.', 'PRIVATE_REQUEST', 403);
+  if(data.requiresSpecialHandling && event.status === 'SCHEDULED') fail('This new hazard needs a separate specialist report. Choose Different waste to alert the operator.', 'HAZARD_REVIEW_REQUIRED',409);
+  if (!areCategoriesCompatible(citizenCategory, event.category)) fail('The categories do not describe the same incident.');
   // 3. Check if user already contributed
   const existingReport = await Report.findOne({ citizenId: userId, complaintId });
   if (existingReport) {
@@ -299,10 +296,10 @@ export async function supportExistingEvent(complaintId, data, userId) {
   }
 
   // 4. Verify distance from event <= radius
-  const coord = { lat: Number(location?.lat), lng: Number(location?.lng) };
+  const coord = coordinatesSchema.parse({lat: location?.lat, lng: location?.lng});
   const eventCoord = { lat: event.location.coordinates[1], lng: event.location.coordinates[0] };
   const distanceM = haversineDistance(coord, eventCoord);
-  if (distanceM > THRESHOLDS.DUP_RADIUS_M * 1.5) {
+  if (distanceM > THRESHOLDS.DUP_RADIUS_M) {
     const err = new Error(`Supporting report location is too far from existing event (${Math.round(distanceM)}m).`);
     err.status = 400;
     err.code = 'TOO_FAR';
@@ -335,17 +332,18 @@ export async function supportExistingEvent(complaintId, data, userId) {
     addressText: addressText || event.addressText,
     aiSuggestedCategory: ai?.category,
     aiShortReason: ai?.shortReason,
-    aiStatus: ai?.status || 'OK',
+    aiStatus: ai?.status || 'UNAVAILABLE',
     aiProvider: ai?.provider,
     citizenCategory: citizenCategory || event.category,
     categoryCorrected: false,
     description,
     duplicateDecision: 'SUPPORT',
-    requestId: crypto.randomUUID(),
+    requestId: data.requestId,
   });
 
   // 7. Update event support count
   event.supportCount += 1;
+  if(data.requiresSpecialHandling) event.requiresSpecialHandling = true;
   event.lastReportedAt = new Date();
 
   // If already verified or scheduled, recompute priority
@@ -365,7 +363,7 @@ export async function supportExistingEvent(complaintId, data, userId) {
 
   // 8. Create Impact Transaction
   // If event is already VERIFIED, supporting report is verified immediately!
-  const isDirectlyVerified = event.status === 'VERIFIED' || event.status === 'SCHEDULED';
+  const isDirectlyVerified = false;
   const { credits, reason } = calculateSupportCredits(event.supportCount - 1);
 
   const tx = await ImpactTransaction.create({
@@ -458,6 +456,7 @@ export async function getReportDetails(reportId, userId) {
   return {
     report,
     complaint,
+    handling: handlingFor(complaint.category, complaint.requiresSpecialHandling, complaint.reportContext),
     timeline,
     closure: complaint.status === 'RESOLVED'
       ? {

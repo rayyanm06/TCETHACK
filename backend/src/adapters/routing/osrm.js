@@ -22,6 +22,7 @@ export async function fetchOsrmTable(points) {
       throw new Error(`OSRM table error code: ${data.code}`);
     }
 
+    if ([...data.durations.flat(), ...data.distances.flat()].some(v => !Number.isFinite(v) || v < 0)) throw new Error('Some stops are not reachable by road.');
     return {
       durations: data.durations, // in seconds
       distances: data.distances, // in meters

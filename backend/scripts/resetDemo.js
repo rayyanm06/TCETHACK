@@ -2,7 +2,7 @@ import { runSeed } from './seed.js';
 import { disconnectDB } from '../src/config/db.js';
 import { ENV } from '../src/config/env.js';
 
-if (!ENV.ALLOW_DEMO_RESET && ENV.NODE_ENV === 'production') {
+if (!ENV.ALLOW_DEMO_RESET) {
   console.error('[Reset Error] Demo reset is disabled in production.');
   process.exit(1);
 }

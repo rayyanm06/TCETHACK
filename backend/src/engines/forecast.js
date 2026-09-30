@@ -102,9 +102,9 @@ export function computeHotspotForecast(
   const [w1, w2, w3] = FORECAST_WEIGHTS;
 
   for (const [cellId, weekMap] of cellWeeklyMap.entries()) {
-    const n12 = weekMap.get(12) || 0;
-    const n11 = weekMap.get(11) || 0;
-    const n10 = weekMap.get(10) || 0;
+    const n12 = weekMap.get(totalHistoryWeeks) || 0;
+    const n11 = weekMap.get(totalHistoryWeeks - 1) || 0;
+    const n10 = weekMap.get(totalHistoryWeeks - 2) || 0;
 
     const expected = Math.round((w1 * n12 + w2 * n11 + w3 * n10) * 10) / 10;
     if (expected >= PREDICTION_THRESHOLD) {
@@ -127,10 +127,10 @@ export function computeHotspotForecast(
   let evaluatedCellsCount = 0;
 
   for (const [cellId, weekMap] of cellWeeklyMap.entries()) {
-    const actual12 = weekMap.get(12) || 0;
-    const n11 = weekMap.get(11) || 0;
-    const n10 = weekMap.get(10) || 0;
-    const n9 = weekMap.get(9) || 0;
+    const actual12 = weekMap.get(totalHistoryWeeks) || 0;
+    const n11 = weekMap.get(totalHistoryWeeks - 1) || 0;
+    const n10 = weekMap.get(totalHistoryWeeks - 2) || 0;
+    const n9 = weekMap.get(totalHistoryWeeks - 3) || 0;
 
     // Only evaluate cells that had at least some activity in weeks 9-12
     if (actual12 === 0 && n11 === 0 && n10 === 0 && n9 === 0) continue;
@@ -144,8 +144,8 @@ export function computeHotspotForecast(
 
     // Naive baseline 2: mean of weeks 1-11
     let sum11 = 0;
-    for (let i = 1; i <= 11; i++) sum11 += weekMap.get(i) || 0;
-    const mean11 = sum11 / 11;
+    for (let i = 1; i < totalHistoryWeeks; i++) sum11 += weekMap.get(i) || 0;
+    const mean11 = sum11 / (totalHistoryWeeks - 1);
     sumAbsDiffMean += Math.abs(actual12 - mean11);
   }
 
@@ -155,12 +155,12 @@ export function computeHotspotForecast(
   const maeMean = Math.round((sumAbsDiffMean / denom) * 100) / 100;
 
   return {
-    label: 'Baseline forecast on synthetic historical data',
+    label: 'Weighted historical baseline',
     gridCellDeg: GRID_CELL_DEG,
     weeks: weeklyData,
     forecast: {
       weekIndex: totalHistoryWeeks + 1,
-      method: 'Weighted 3-week recent activity (0.5 · W12 + 0.3 · W11 + 0.2 · W10)',
+      method: 'Weighted recent activity: 0.5 × last week + 0.3 × previous week + 0.2 × third week',
       weights: FORECAST_WEIGHTS,
       cells: forecastCells,
     },
@@ -169,7 +169,7 @@ export function computeHotspotForecast(
       maeModel,
       maeLastWeek,
       maeMean,
-      note: `Held-out week 12 on synthetic data: model MAE ${maeModel} vs naive last-week baseline ${maeLastWeek}.`,
+      note: `Held-out week ${heldOutWeek}: model MAE ${maeModel} vs naive last-week baseline ${maeLastWeek}.`,
     },
   };
 }

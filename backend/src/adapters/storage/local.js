@@ -28,11 +28,11 @@ export async function uploadLocal(fileBuffer, mimeType = 'image/jpeg') {
     }
     await fs.promises.writeFile(filePath, fileBuffer);
   } catch (err) {
-    console.warn('[Storage] Write to disk failed:', err.message);
+    throw Object.assign(new Error('Photo could not be saved. Please retry.'),{status:503,code:'STORAGE_UNAVAILABLE'});
   }
 
   return {
-    imageUrl: `/uploads/${filename}`,
+    imageUrl: `${process.env.PUBLIC_API_ORIGIN || 'http://localhost:4000'}/uploads/${filename}`,
     imagePublicId: publicId,
     storageDriver: 'local',
   };

@@ -1,3 +1,4 @@
+import {createVehicle} from '../services/fleetService.js';
 import express from 'express';
 import { authenticate, requireRole } from '../middleware/auth.js';
 import {
@@ -56,6 +57,8 @@ router.get('/routes/:id', ...operatorAuth, async (req, res, next) => {
     next(err);
   }
 });
+
+router.post('/vehicles', ...operatorAuth, async(req,res,next)=>{try{res.status(201).json(await createVehicle(req.body));}catch(err){next(err);}});
 
 router.get('/vehicles', ...operatorAuth, async (req, res, next) => {
   try {

@@ -11,7 +11,7 @@ export async function getCitizenImpactSummary(userId) {
     .lean();
 
   const userReports = await Report.find({ citizenId: userId }).lean();
-  const totals = deriveUserImpact(transactions, userReports);
+  const totals = deriveUserImpact(transactions.filter(t=>t.complaintId).map(t=>({...t,complaintId:t.complaintId._id})), userReports);
 
   // Group transactions by complaintId for the "What changed" feed
   const feedMap = new Map();
@@ -28,6 +28,7 @@ export async function getCitizenImpactSummary(userId) {
         addressText: comp.addressText,
         status: comp.status,
         resolvedAt: comp.resolvedAt,
+        handoff:comp.handoff?.facilityName,
         photoUrl: comp.closurePhotoUrl,
         transactions: [],
       });
@@ -55,11 +56,11 @@ export async function getCitizenImpactSummary(userId) {
       const dateStr = item.resolvedAt
         ? new Date(item.resolvedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
         : 'recently';
-      item.sentence = `${address} pile — cleared on ${dateStr}. Thank you for your contribution!`;
+      item.sentence = item.handoff ? `Handoff to ${item.handoff} recorded on ${dateStr}.` : `${address} — clearance recorded on ${dateStr}.`; 
     } else if (item.status === 'SCHEDULED') {
-      item.sentence = `${address} incident — scheduled for municipal collection trip.`;
+      item.sentence = `${address} incident — assigned to a collection route.`;
     } else if (item.status === 'VERIFIED') {
-      item.sentence = `${address} incident — verified by municipal inspection team.`;
+      item.sentence = `${address} incident — reviewed by an operator.`;
     } else {
       item.sentence = `${address} report — received and awaiting inspection.`;
     }

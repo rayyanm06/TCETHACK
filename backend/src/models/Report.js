@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { liveOnly } from './liveOnly.js';
 
 const reportSchema = new mongoose.Schema(
   {
@@ -57,4 +58,5 @@ reportSchema.index({ complaintId: 1 });
 reportSchema.index({ citizenId: 1, complaintId: 1 }, { unique: true });
 reportSchema.index({ citizenId: 1, requestId: 1 }, { unique: true });
 
+reportSchema.plugin(liveOnly);
 export const Report = mongoose.model('Report', reportSchema);

@@ -32,11 +32,12 @@ export const OpsShell: React.FC = () => {
   else if (currentPath.includes('/impact')) activeLens = 'impact';
 
   // Events & ticker state
+  const [pollError,setPollError] = useState('');
   const [events, setEvents] = useState<WasteEventSummary[]>([]);
   const [tickerCounts, setTickerCounts] = useState({
-    reports: 16,
-    events: 13,
-    plannedStops: 7,
+    reports: 0,
+    events: 0,
+    plannedStops: 0,
   });
 
   // Selected event for drawer
@@ -55,12 +56,13 @@ export const OpsShell: React.FC = () => {
   const fetchEventsData = async () => {
     try {
       const res = await api.get<OperatorEventsResponse>('/complaints?includeResolved=true');
+      setPollError('');
       setEvents(res.items || []);
       if (res.counts) {
         setTickerCounts(res.counts);
       }
     } catch (err) {
-      console.warn('Failed to poll operator events', err);
+      setPollError('Live updates interrupted. Displayed data may be stale. Retrying…');
     }
   };
 
@@ -70,17 +72,6 @@ export const OpsShell: React.FC = () => {
     const interval = setInterval(fetchEventsData, 5000);
     return () => clearInterval(interval);
   }, []);
-
-  const handleResetDemo = async () => {
-    if (!window.confirm('Reset demo database to original starting baseline?')) return;
-    try {
-      await api.post('/admin/reset-demo');
-      alert('Demo data successfully reset!');
-      fetchEventsData();
-    } catch (err: any) {
-      alert('Reset failed: ' + err.message);
-    }
-  };
 
   return (
     <div className="relative w-screen h-screen overflow-hidden flex flex-col bg-paper">
@@ -140,17 +131,10 @@ export const OpsShell: React.FC = () => {
             <span className="hidden sm:inline">Queue</span>
           </button>
 
-          <button
-            onClick={handleResetDemo}
-            title="Reset Demo Baseline"
-            className="p-1.5 rounded hover:bg-surface-2 text-ink-3 hover:text-ochre"
-          >
-            <RotateCcw className="w-4 h-4" />
-          </button>
 
           <div className="flex items-center gap-2 pl-2 border-l border-line">
             <span className="text-xs font-semibold text-ink hidden md:inline">
-              {user?.name || 'Operator Dilip'}
+              {user?.name || 'Operator'}
             </span>
             <button
               onClick={() => {
@@ -166,6 +150,7 @@ export const OpsShell: React.FC = () => {
         </div>
       </header>
 
+      {pollError && <div role="alert" className="bg-clay-100 text-clay text-xs p-2">{pollError}</div>}
       {/* Main Map Viewport with Lens Overlay */}
       <div className="flex-1 relative overflow-hidden">
         {/* Persistent Leaflet Map Canvas (§5.2) */}
@@ -173,6 +158,7 @@ export const OpsShell: React.FC = () => {
           events={events}
           selectedEventId={selectedEventId}
           onSelectEvent={(id) => setSelectedEventId(id)}
+          depot={activeRoute ? {name:activeRoute.depot.name,lat:activeRoute.depot.location.coordinates[1],lng:activeRoute.depot.location.coordinates[0]} : undefined}
           route={activeLens === 'routes' ? activeRoute : null}
           congestionZones={activeLens === 'routes' ? congestionZones : []}
           forecastMode={activeLens === 'forecast' ? forecastMode : undefined}

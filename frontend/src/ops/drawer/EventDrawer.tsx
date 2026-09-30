@@ -1,3 +1,4 @@
+import {useNavigate} from 'react-router-dom';
 import React, { useState, useEffect } from 'react';
 import { api } from '../../lib/api.ts';
 import { WasteEventSummary, PriorityTier, WasteCategory } from '../../types/api.ts';
@@ -24,6 +25,13 @@ interface EventDrawerProps {
 }
 
 export const EventDrawer: React.FC<EventDrawerProps> = ({ eventId, onClose, onEventUpdated }) => {
+  const navigate = useNavigate();
+  const [proof,setProof] = useState<any>(null);
+  const [uploading,setUploading] = useState(false);
+  const [facility,setFacility] = useState('');
+  const [reference,setReference] = useState('');
+  const [sourceUrl,setSourceUrl] = useState('');
+  const [special,setSpecial] = useState(false);
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -42,11 +50,13 @@ export const EventDrawer: React.FC<EventDrawerProps> = ({ eventId, onClose, onEv
   useEffect(() => {
     async function fetchEventDetails() {
       setLoading(true);
+      setProof(null);setClosureNote('');setFacility('');setReference('');setSourceUrl('');
       setError(null);
       try {
         const res = await api.get<any>(`/complaints/${eventId}`);
         setData(res);
         if (res.event) {
+          setSpecial(!!res.event.requiresSpecialHandling);
           setSeverity(res.event.severity || 2);
           setEstimatedWeightKg(res.event.estimatedWeightKg || 100);
           setSensitiveSite(res.event.sensitiveSite || 'NONE');
@@ -71,6 +81,7 @@ export const EventDrawer: React.FC<EventDrawerProps> = ({ eventId, onClose, onEv
         severity,
         estimatedWeightKg,
         sensitiveSite,
+        requiresSpecialHandling: special,
       });
       onEventUpdated();
       onClose();
@@ -106,7 +117,9 @@ export const EventDrawer: React.FC<EventDrawerProps> = ({ eventId, onClose, onEv
     try {
       await api.patch(`/complaints/${eventId}/status`, {
         to: 'RESOLVED',
-        note: closureNote || 'Cleared by sanitation squad.',
+        note: closureNote,
+        closurePhoto: proof,
+        ...(data.requiresHandoff ? {handoff:{facilityName:facility,reference,sourceUrl}} : {}),
       });
       onEventUpdated();
       onClose();
@@ -198,6 +211,7 @@ export const EventDrawer: React.FC<EventDrawerProps> = ({ eventId, onClose, onEv
           </div>
         </div>
 
+        {data.handling && <div className="p-3 bg-plum-100 rounded border border-plum/20"><b>{data.handling.title}</b><p className="mt-1">{data.handling.message}</p>{event.reportContext === 'HOUSEHOLD' && <p className="mt-2 font-semibold">Private request · {event.itemCount} × {event.itemDescription}</p>}</div>}
         {/* 3. Classification & Citizen Correction Flag (§6.8) */}
         <div className="p-3 bg-surface-2 rounded border border-line space-y-1">
           <div className="flex items-center justify-between">
@@ -220,9 +234,11 @@ export const EventDrawer: React.FC<EventDrawerProps> = ({ eventId, onClose, onEv
         {isSubmitted && (
           <div className="p-3.5 bg-ochre-100/30 rounded border border-ochre/30 space-y-3">
             <span className="text-[11px] uppercase font-bold tracking-wider text-ochre block">
-              Municipal Verification Input
+              Operator Verification
             </span>
 
+            <label className="block">Confirmed category<select className="w-full p-2 border border-line mt-1" value={category} onChange={e=>setCategory(e.target.value as WasteCategory)}>{Object.entries(CATEGORY_DETAILS).map(([key,v])=><option key={key} value={key}>{v.label}</option>)}</select></label>
+            <label className="flex gap-2"><input type="checkbox" checked={special} onChange={e=>setSpecial(e.target.checked)}/>Requires specialist handling</label>
             {/* Severity S1 - S3 */}
             <div>
               <label className="block text-[11px] font-semibold text-ink mb-1">
@@ -259,7 +275,7 @@ export const EventDrawer: React.FC<EventDrawerProps> = ({ eventId, onClose, onEv
                 type="number"
                 value={estimatedWeightKg}
                 onChange={(e) => setEstimatedWeightKg(Number(e.target.value))}
-                min={5}
+                min={0.1} step={0.1}
                 max={2000}
                 className="w-full px-2.5 py-1.5 rounded border border-line bg-surface text-ink font-mono font-medium"
               />
@@ -366,15 +382,20 @@ export const EventDrawer: React.FC<EventDrawerProps> = ({ eventId, onClose, onEv
                 className="w-full h-32 rounded object-cover border border-moss/20"
               />
             )}
+            {event.handoff?.facilityName && <p>Received by {event.handoff.facilityName} · Reference {event.handoff.reference}</p>}
             {closure.note && <p className="text-[11px] text-ink-2 font-medium">{closure.note}</p>}
             <p className="text-[10px] text-ink-3">Resolved on {new Date(closure.resolvedAt).toLocaleString('en-IN')}</p>
           </div>
         )}
 
         {/* Closure Form (if SCHEDULED and operator clicks Mark Resolved) */}
-        {isScheduled && (
+        {(isScheduled || (event.status === 'VERIFIED' && data.requiresHandoff)) && (
           <div className="p-3 bg-surface-2 rounded border border-line space-y-2">
-            <span className="text-[11px] font-bold text-ink block">Mark as Cleared / Resolved</span>
+            <span className="text-[11px] font-bold text-ink block">Record completion evidence</span>
+            <p>Upload the clearance photo or receiving-service receipt. Review the linked evidence before confirming.</p>
+            <label className="block">Completion photograph (required)<input type="file" accept="image/jpeg,image/png,image/webp" disabled={uploading||submitting} onChange={async e=>{const file=e.target.files?.[0];if(!file)return;setUploading(true);setProof(null);setError(null);try{const form=new FormData();form.append('image',file);setProof(await api.post('/uploads',form));}catch(err:any){setError(err.message);}finally{setUploading(false);}}}/></label>
+            {uploading && <p>Uploading evidence…</p>}{proof && <img src={proof.imageUrl} alt="Uploaded completion evidence" className="h-24 rounded"/>}
+            {data.requiresHandoff && <div className="space-y-2"><label className="block">Receiving facility / service<input className="w-full p-2 border border-line" value={facility} maxLength={150} onChange={e=>setFacility(e.target.value)}/></label><label className="block">Receipt or acceptance reference<input className="w-full p-2 border border-line" value={reference} maxLength={150} onChange={e=>setReference(e.target.value)}/></label><label className="block">Verified service source URL<input type="url" placeholder="https://…" className="w-full p-2 border border-line" value={sourceUrl} maxLength={500} onChange={e=>setSourceUrl(e.target.value)}/></label><p className="text-ink-3">Confirm current registration/eligibility and actual acceptance with the receiving service. This is an operator-recorded handoff, not an automatic booking.</p></div>}
             <input
               type="text"
               placeholder="Operator clearance note..."
@@ -383,7 +404,7 @@ export const EventDrawer: React.FC<EventDrawerProps> = ({ eventId, onClose, onEv
               className="w-full px-2.5 py-1.5 rounded border border-line bg-surface text-ink text-xs"
             />
             <button
-              disabled={submitting}
+              disabled={submitting || uploading || !proof || closureNote.trim().length<10 || (data.requiresHandoff && (!facility.trim() || !reference.trim() || !sourceUrl.startsWith('https://')))}
               onClick={handleResolve}
               className="w-full py-2 bg-moss hover:bg-moss-700 text-surface font-semibold text-xs rounded shadow flex items-center justify-center gap-1.5"
             >
@@ -416,11 +437,11 @@ export const EventDrawer: React.FC<EventDrawerProps> = ({ eventId, onClose, onEv
           </>
         )}
 
-        {event.status === 'VERIFIED' && (
+        {event.status === 'VERIFIED' && !data.requiresHandoff && (
           <button
             onClick={() => {
               onClose();
-              window.location.hash = '#/ops/routes';
+              navigate('/ops/routes');
             }}
             className="w-full py-2.5 bg-lagoon hover:bg-lagoon/90 text-surface font-semibold text-xs rounded shadow flex items-center justify-center gap-1.5"
           >

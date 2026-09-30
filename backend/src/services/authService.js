@@ -1,8 +1,11 @@
 import bcrypt from 'bcryptjs';
+import { z } from 'zod';
+import { ENV } from '../config/env.js';
 import { User } from '../models/User.js';
 import { signToken } from '../utils/token.js';
 
 export async function registerUser({ name, email, password }) {
+  ({name, email, password} = z.object({name: z.string().trim().min(2).max(80), email: z.string().trim().email().max(254), password: z.string().min(10).max(72)}).parse({name,email,password}));
   if (!name || !email || !password) {
     const err = new Error('Name, email, and password are required.');
     err.status = 400;
@@ -17,6 +20,7 @@ export async function registerUser({ name, email, password }) {
     throw err;
   }
 
+  if (!ENV.DEMO_MODE && email.toLowerCase().endsWith('.demo')) throw Object.assign(new Error('Use a real email address.'),{status:400});
   const normalizedEmail = email.toLowerCase().trim();
   const existing = await User.findOne({ email: normalizedEmail });
   if (existing) {
@@ -50,6 +54,8 @@ export async function registerUser({ name, email, password }) {
 }
 
 export async function loginUser({ email, password }) {
+  ({email, password} = z.object({email: z.string().trim().email().max(254), password: z.string().min(1).max(72)}).parse({email,password}));
+  if (!ENV.DEMO_MODE && email.toLowerCase().endsWith('.demo')) throw Object.assign(new Error('Demo accounts are disabled.'), {status: 403});
   if (!email || !password) {
     const err = new Error('Email and password are required.');
     err.status = 400;

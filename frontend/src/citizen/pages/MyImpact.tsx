@@ -131,7 +131,7 @@ export const MyImpact: React.FC = () => {
 
         {!data?.feed || data.feed.length === 0 ? (
           <div className="p-6 bg-surface rounded-card border border-line text-center text-xs text-ink-3">
-            Your verified contributions will show up here once approved by municipal teams.
+            Your verified contributions will show up here once approved by operators.
           </div>
         ) : (
           data.feed.map((item) => (
@@ -202,7 +202,7 @@ export const MyImpact: React.FC = () => {
 
             <div className="text-xs text-ink-2 space-y-2.5">
               <p>
-                <b>Outcome-verified:</b> Credits count only after municipal operators physically inspect and verify the report.
+                <b>Outcome-verified:</b> Credits count only after an operator reviews the submitted evidence.
               </p>
               <p>
                 <b>Duplicate consolidation:</b> Supporting reports earn a smaller verified reward (3 credits) without creating redundant collection stops.

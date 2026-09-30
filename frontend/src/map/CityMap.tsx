@@ -23,7 +23,7 @@ interface CityMapProps {
 
 export const CityMap: React.FC<CityMapProps> = ({
   events = [],
-  depot = { name: 'North Municipal Central Depot', lat: 19.2071, lng: 72.876 },
+  depot,
   selectedEventId,
   onSelectEvent,
   route,
@@ -91,28 +91,13 @@ export const CityMap: React.FC<CityMapProps> = ({
 
     layers.clearLayers();
 
-    // 1. Draw Service Area Boundary (illustrative dashed outline)
-    const serviceAreaBbox: [number, number][] = [
-      [19.18, 72.84],
-      [19.24, 72.84],
-      [19.24, 72.91],
-      [19.18, 72.91],
-    ];
-    L.polygon(serviceAreaBbox, {
-      color: '#2E6B4E',
-      weight: 1,
-      dashArray: '4, 6',
-      fill: false,
-      opacity: 0.4,
-    }).addTo(layers);
-
     // 2. Draw Depot
     if (depot) {
       const depotMarker = L.marker([depot.lat, depot.lng], {
         icon: createDepotMarker(depot.name),
         zIndexOffset: 1000,
       });
-      depotMarker.bindPopup(`<b>${depot.name}</b><br/>Municipal Collection Base`);
+      const label = document.createElement('span');label.textContent = depot.name;depotMarker.bindPopup(label);
       depotMarker.addTo(layers);
     }
 
