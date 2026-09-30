@@ -1,0 +1,20 @@
+:root {
+  --paper: #F5F2EA;
+  --surface: #FFFFFF;
+  --surface-2: #EFEBE0;
+  --ink: #17231C;
+  --ink-2: #3F4F45;
+  --ink-3: #5F6D64;
+  --line: #D9D4C7;
+  --moss: #2E6B4E;
+  --moss-700: #1F4F3A;
+  --moss-100: #DCE9DF;
+  --lagoon: #0E6A78;
+  --lagoon-100: #D4ECEF;
+  --clay: #C4492F;
+  --clay-100: #F6DDD5;
+  --ochre: #C48A12;
+  --ochre-100: #F6E8C6;
+  --plum: #6B4F8F;
+  --plum-100: #E9E1F2;
+}

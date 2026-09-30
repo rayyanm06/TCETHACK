@@ -1,0 +1,15 @@
+{
+  "name": "civicclean",
+  "version": "1.0.0",
+  "private": true,
+  "description": "CivicClean — Smart Waste Management & Collection Planning System",
+  "scripts": {
+    "dev": "npm run dev --prefix backend & npm run dev --prefix frontend",
+    "dev:backend": "npm run dev --prefix backend",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "install:all": "npm install && npm install --prefix backend && npm install --prefix frontend",
+    "seed": "npm run seed --prefix backend",
+    "demo:reset": "npm run demo:reset --prefix backend",
+    "test": "npm run test --prefix backend"
+  }
+}

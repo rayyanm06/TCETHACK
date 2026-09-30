@@ -1,0 +1,171 @@
+/* Waste Pulse Map Markers & Animations (§7.7) */
+
+.waste-marker-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  width: 36px;
+  height: 36px;
+  cursor: pointer;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.waste-marker-wrapper:hover {
+  transform: scale(1.15);
+  z-index: 999;
+}
+
+/* Base Marker Body */
+.waste-marker-body {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 2px 6px rgba(23, 35, 28, 0.2);
+  z-index: 2;
+  position: relative;
+}
+
+/* 1. Unverified Event (Dashed circle outline, category glyph, no fill) */
+.marker-unverified .waste-marker-body {
+  background-color: var(--surface);
+  border: 2px dashed var(--ink-3);
+  color: var(--ink-2);
+}
+
+/* 2. Verified Normal / Low (Solid circle ink 90%, category glyph white) */
+.marker-normal .waste-marker-body,
+.marker-low .waste-marker-body {
+  background-color: var(--ink);
+  color: var(--surface);
+  border: 1.5px solid var(--surface);
+}
+
+/* 3. Verified High (Solid circle + one static ring + ochre outer stroke) */
+.marker-high .waste-marker-body {
+  background-color: var(--ochre);
+  color: var(--surface);
+  border: 2px solid var(--surface);
+}
+.marker-high::after {
+  content: '';
+  position: absolute;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1.5px solid var(--ochre);
+  opacity: 0.8;
+  z-index: 1;
+}
+
+/* 4. Verified Critical (Solid clay circle + double ring pulsing 2.4s + "!" badge) */
+.marker-critical .waste-marker-body {
+  background-color: var(--clay);
+  color: var(--surface);
+  border: 2px solid var(--surface);
+}
+.marker-critical .pulse-ring-1 {
+  position: absolute;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1.5px solid var(--clay);
+  animation: wastePulse 2.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) infinite;
+  z-index: 1;
+}
+.marker-critical .pulse-ring-2 {
+  position: absolute;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid var(--clay);
+  animation: wastePulse 2.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) infinite 0.6s;
+  z-index: 1;
+}
+
+@keyframes wastePulse {
+  0% {
+    transform: scale(0.7);
+    opacity: 0.9;
+  }
+  70% {
+    transform: scale(1.35);
+    opacity: 0.2;
+  }
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
+/* 5. Scheduled (Lagoon inner dot + route stop badge number) */
+.marker-scheduled .waste-marker-body {
+  background-color: var(--lagoon);
+  color: var(--surface);
+  border: 2px solid var(--surface);
+}
+
+/* 6. Resolved (Moss circle + check) */
+.marker-resolved .waste-marker-body {
+  background-color: var(--moss);
+  color: var(--surface);
+  border: 2px solid var(--surface);
+}
+
+/* Depot Marker */
+.marker-depot .waste-marker-body {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background-color: var(--ink);
+  color: var(--surface);
+  font-weight: 700;
+  border: 2px solid var(--surface);
+}
+
+/* Stop Transit Sign Badge */
+.stop-transit-badge {
+  width: 24px;
+  height: 24px;
+  background-color: var(--lagoon);
+  color: #ffffff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  border: 1.5px solid #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+
+/* Forecast Plum Ring Breathing (§7.8) */
+@keyframes plumBreathe {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 0.4;
+  }
+}
+.forecast-breathe {
+  animation: plumBreathe 4s ease-in-out infinite;
+}
+
+/* Accessibility: Disable looping motion under prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  .marker-critical .pulse-ring-1,
+  .marker-critical .pulse-ring-2,
+  .forecast-breathe {
+    animation: none !important;
+    opacity: 0.5 !important;
+  }
+}

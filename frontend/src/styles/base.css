@@ -1,0 +1,43 @@
+@import '@fontsource-variable/fraunces';
+@import '@fontsource-variable/inter';
+@import './tokens.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    background-color: var(--paper);
+    color: var(--ink);
+    font-family: 'Inter Variable', -apple-system, BlinkMacSystemFont, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    font-variant-numeric: tabular-nums;
+  }
+
+  h1, h2, h3, .font-serif {
+    font-family: 'Fraunces Variable', Georgia, serif;
+  }
+}
+
+/* Contour Background Pattern Motif (§7.5) */
+.contour-pattern {
+  background-image: radial-gradient(rgba(23, 35, 28, 0.04) 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+
+/* Survey Registration Mark Motif (§7.5) */
+.survey-corner {
+  position: relative;
+}
+.survey-corner::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 8px;
+  height: 8px;
+  border-top: 1.5px solid var(--line);
+  border-right: 1.5px solid var(--line);
+  pointer-events: none;
+}
