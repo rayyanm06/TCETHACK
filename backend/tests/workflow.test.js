@@ -670,4 +670,78 @@ describe('CivicClean End-to-End Workflow & Security Regression Suite', { concurr
     });
     assert.equal(bonusTxAfter.status, 'REVOKED', 'Resolution credits must be revoked upon reopening');
   });
+
+  test('15. Firebase sync creates new citizen record with stable firebaseUid and returns JWT session', async () => {
+    const testFbUid = `fb_test_citizen_${Date.now()}`;
+    const testEmail = `fb.citizen.${Date.now()}@example.com`;
+
+    const res = await fetch(`${API_BASE}/auth/firebase-sync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        firebaseUid: testFbUid,
+        email: testEmail,
+        name: 'Firebase Test Citizen',
+      }),
+    });
+
+    assert.equal(res.status, 200);
+    const data = await res.json();
+    assert.ok(data.token, 'Should return JWT token');
+    assert.equal(data.user.role, 'CITIZEN', 'Public Firebase user must be assigned CITIZEN role');
+    assert.equal(data.user.email, testEmail);
+    assert.equal(data.user.name, 'Firebase Test Citizen');
+
+    const dbUser = await User.findOne({ firebaseUid: testFbUid });
+    assert.ok(dbUser, 'User must exist in MongoDB with firebaseUid');
+    assert.equal(dbUser.firebaseUid, testFbUid);
+  });
+
+  test('16. Firebase sync is idempotent and retrieves existing user by firebaseUid', async () => {
+    const testFbUid = `fb_test_citizen_idem_${Date.now()}`;
+    const testEmail = `fb.idem.${Date.now()}@example.com`;
+
+    // First sync
+    const res1 = await fetch(`${API_BASE}/auth/firebase-sync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        firebaseUid: testFbUid,
+        email: testEmail,
+        name: 'Idempotent Citizen',
+      }),
+    });
+    const data1 = await res1.json();
+
+    // Second sync with same firebaseUid
+    const res2 = await fetch(`${API_BASE}/auth/firebase-sync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        firebaseUid: testFbUid,
+        email: testEmail,
+        name: 'Idempotent Citizen Updated',
+      }),
+    });
+    const data2 = await res2.json();
+
+    assert.equal(data1.user.id, data2.user.id, 'Must return the same MongoDB user ID');
+
+    const count = await User.countDocuments({ firebaseUid: testFbUid });
+    assert.equal(count, 1, 'Must not duplicate user records');
+  });
+
+  test('17. Firebase sync rejects invalid payload missing firebaseUid or email', async () => {
+    const res = await fetch(`${API_BASE}/auth/firebase-sync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: 'missing.uid@example.com',
+      }),
+    });
+
+    assert.equal(res.status, 400);
+    const data = await res.json();
+    assert.equal(data.error.code, 'VALIDATION_ERROR');
+  });
 });

@@ -86,3 +86,63 @@ export async function loginUser({ email, password }) {
     },
   };
 }
+
+export async function syncFirebaseUser({ firebaseUid, email, name }) {
+  if (!firebaseUid || !email) {
+    const err = new Error('firebaseUid and email are required.');
+    err.status = 400;
+    err.code = 'VALIDATION_ERROR';
+    throw err;
+  }
+
+  const normalizedEmail = email.toLowerCase().trim();
+  const configuredOperatorEmail = (
+    process.env.OPERATOR_EMAIL ||
+    process.env.VITE_OPERATOR_EMAIL ||
+    ''
+  ).toLowerCase().trim();
+
+  // Search by stable firebaseUid first
+  let user = await User.findOne({ firebaseUid });
+
+  // If not found by firebaseUid, link existing account by email if present
+  if (!user) {
+    user = await User.findOne({ email: normalizedEmail });
+    if (user) {
+      user.firebaseUid = firebaseUid;
+      if (name && (!user.name || user.name === 'Citizen')) {
+        user.name = name.trim();
+      }
+      if (configuredOperatorEmail && normalizedEmail === configuredOperatorEmail) {
+        user.role = 'OPERATOR';
+      }
+      await user.save();
+    }
+  }
+
+  // If user does not exist, create new citizen (or operator if configured)
+  if (!user) {
+    const isOperator = Boolean(configuredOperatorEmail && normalizedEmail === configuredOperatorEmail);
+    const assignedRole = isOperator ? 'OPERATOR' : 'CITIZEN';
+
+    user = await User.create({
+      firebaseUid,
+      email: normalizedEmail,
+      name: (name && name.trim()) || (isOperator ? 'Municipal Officer' : 'Citizen'),
+      role: assignedRole,
+    });
+  }
+
+  const token = signToken(user);
+
+  return {
+    token,
+    user: {
+      id: user._id.toString(),
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      firebaseUid: user.firebaseUid,
+    },
+  };
+}

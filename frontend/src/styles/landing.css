@@ -1,0 +1,53 @@
+/* CivicClean Editorial Landing Scene & Collection Animations */
+
+@keyframes treeSway {
+  0%, 100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(1.2deg) translateY(-0.5px);
+  }
+}
+
+@keyframes cloudDrift {
+  0% {
+    transform: translateX(0px);
+  }
+  50% {
+    transform: translateX(18px);
+  }
+  100% {
+    transform: translateX(0px);
+  }
+}
+
+@keyframes roadDashPulse {
+  0% {
+    stroke-dashoffset: 0;
+  }
+  100% {
+    stroke-dashoffset: -40;
+  }
+}
+
+.animate-tree-sway {
+  animation: treeSway 4s ease-in-out infinite;
+  transform-origin: bottom center;
+}
+
+.animate-cloud-drift {
+  animation: cloudDrift 16s ease-in-out infinite;
+}
+
+.animate-road-flow {
+  animation: roadDashPulse 1.2s linear infinite;
+}
+
+/* Reduced Motion Safety */
+@media (prefers-reduced-motion: reduce) {
+  .animate-tree-sway,
+  .animate-cloud-drift,
+  .animate-road-flow {
+    animation: none !important;
+  }
+}

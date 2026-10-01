@@ -19,6 +19,10 @@ build/
 .env.production.local
 !.env.example
 
+# Firebase & Secret Credentials
+serviceAccountKey.json
+firebase-adminsdk-*.json
+
 # Uploads
 backend/uploads/
 uploads/
@@ -39,3 +43,6 @@ Thumbs.db
 
 # Deployments
 .vercel/
+
+# Scratch & temporary test scripts
+scratch/
