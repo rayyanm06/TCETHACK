@@ -99,8 +99,13 @@ export async function syncFirebaseUser({ firebaseUid, email, name }) {
   const configuredOperatorEmail = (
     process.env.OPERATOR_EMAIL ||
     process.env.VITE_OPERATOR_EMAIL ||
-    ''
+    'civicclean.operator@gmail.com'
   ).toLowerCase().trim();
+
+  const isOperator = Boolean(
+    configuredOperatorEmail && normalizedEmail === configuredOperatorEmail
+  );
+  const expectedRole = isOperator ? 'OPERATOR' : 'CITIZEN';
 
   // Search by stable firebaseUid first
   let user = await User.findOne({ firebaseUid });
@@ -110,26 +115,24 @@ export async function syncFirebaseUser({ firebaseUid, email, name }) {
     user = await User.findOne({ email: normalizedEmail });
     if (user) {
       user.firebaseUid = firebaseUid;
-      if (name && (!user.name || user.name === 'Citizen')) {
-        user.name = name.trim();
-      }
-      if (configuredOperatorEmail && normalizedEmail === configuredOperatorEmail) {
-        user.role = 'OPERATOR';
-      }
-      await user.save();
     }
   }
 
-  // If user does not exist, create new citizen (or operator if configured)
-  if (!user) {
-    const isOperator = Boolean(configuredOperatorEmail && normalizedEmail === configuredOperatorEmail);
-    const assignedRole = isOperator ? 'OPERATOR' : 'CITIZEN';
-
+  if (user) {
+    if (user.role !== expectedRole) {
+      user.role = expectedRole;
+    }
+    if (name && (!user.name || user.name === 'Citizen' || user.name === 'Municipal Officer')) {
+      user.name = name.trim();
+    }
+    await user.save();
+  } else {
+    // If user does not exist, create new record
     user = await User.create({
       firebaseUid,
       email: normalizedEmail,
       name: (name && name.trim()) || (isOperator ? 'Municipal Officer' : 'Citizen'),
-      role: assignedRole,
+      role: expectedRole,
     });
   }
 

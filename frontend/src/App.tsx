@@ -35,20 +35,22 @@ const ProtectedRoute: React.FC<{ children: React.ReactElement; requiredRole?: 'O
   }
 
   if (requiredRole && user.role !== requiredRole) {
-    return <Navigate to={user.role === 'OPERATOR' ? '/ops' : '/'} replace />;
+    return <Navigate to={user.role === 'OPERATOR' ? '/operator' : '/citizen'} replace />;
   }
 
   return children;
 };
 
 export const App: React.FC = () => {
+  const { user } = useAuth();
+
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
 
       {/* Citizen Protected Routes */}
       <Route
-        path="/"
+        path="/citizen"
         element={
           <ProtectedRoute requiredRole="CITIZEN">
             <CitizenShell />
@@ -64,7 +66,7 @@ export const App: React.FC = () => {
 
       {/* Operator Protected Routes */}
       <Route
-        path="/ops"
+        path="/operator"
         element={
           <ProtectedRoute requiredRole="OPERATOR">
             <OpsShell />
@@ -72,7 +74,7 @@ export const App: React.FC = () => {
         }
       />
       <Route
-        path="/ops/routes"
+        path="/operator/routes"
         element={
           <ProtectedRoute requiredRole="OPERATOR">
             <OpsShell />
@@ -80,7 +82,7 @@ export const App: React.FC = () => {
         }
       />
       <Route
-        path="/ops/forecast"
+        path="/operator/forecast"
         element={
           <ProtectedRoute requiredRole="OPERATOR">
             <OpsShell />
@@ -88,7 +90,7 @@ export const App: React.FC = () => {
         }
       />
       <Route
-        path="/ops/impact"
+        path="/operator/impact"
         element={
           <ProtectedRoute requiredRole="OPERATOR">
             <OpsShell />
@@ -96,7 +98,7 @@ export const App: React.FC = () => {
         }
       />
       <Route
-        path="/ops/queue"
+        path="/operator/queue"
         element={
           <ProtectedRoute requiredRole="OPERATOR">
             <QueueTable />
@@ -104,8 +106,33 @@ export const App: React.FC = () => {
         }
       />
 
+      {/* Aliases & Backward-Compatibility */}
+      <Route path="/ops/*" element={<Navigate to="/operator" replace />} />
+      <Route path="/ops" element={<Navigate to="/operator" replace />} />
+
+      <Route
+        path="/"
+        element={
+          <ProtectedRoute>
+            <Navigate to={user?.role === 'OPERATOR' ? '/operator' : '/citizen'} replace />
+          </ProtectedRoute>
+        }
+      />
+      <Route path="/report" element={<Navigate to="/citizen/report" replace />} />
+      <Route path="/reports" element={<Navigate to="/citizen/reports" replace />} />
+      <Route path="/reports/:id" element={<Navigate to="/citizen/reports/:id" replace />} />
+      <Route path="/impact" element={<Navigate to="/citizen/impact" replace />} />
+
       {/* Catch-all */}
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route
+        path="*"
+        element={
+          <ProtectedRoute>
+            <Navigate to={user?.role === 'OPERATOR' ? '/operator' : '/citizen'} replace />
+          </ProtectedRoute>
+        }
+      />
     </Routes>
   );
 };
+

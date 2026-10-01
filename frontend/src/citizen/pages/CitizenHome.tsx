@@ -90,7 +90,7 @@ export const CitizenHome: React.FC = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {/* Entry Action A: Public Waste */}
         <div
-          onClick={() => navigate('/report?type=public')}
+          onClick={() => navigate('/citizen/report?type=public')}
           className="bg-surface rounded-card border-2 border-line hover:border-moss transition p-5 shadow-xs cursor-pointer survey-corner flex flex-col justify-between group"
         >
           <div>
@@ -112,7 +112,7 @@ export const CitizenHome: React.FC = () => {
 
         {/* Entry Action B: Household Items / E-Waste */}
         <div
-          onClick={() => navigate('/report?type=household')}
+          onClick={() => navigate('/citizen/report?type=household')}
           className="bg-surface rounded-card border-2 border-line hover:border-lagoon transition p-5 shadow-xs cursor-pointer survey-corner flex flex-col justify-between group"
         >
           <div>
@@ -187,7 +187,7 @@ export const CitizenHome: React.FC = () => {
               </div>
 
               <button
-                onClick={() => navigate(`/reports/${latestReport.id}`)}
+                onClick={() => navigate(`/citizen/reports/${latestReport.id}`)}
                 className="mt-1 text-xs text-moss font-semibold hover:underline flex items-center gap-1"
               >
                 <span>View full timeline & evidence dossier</span>
@@ -226,7 +226,7 @@ export const CitizenHome: React.FC = () => {
 
       {/* Secondary: Verified Civic Impact */}
       <div
-        onClick={() => navigate('/impact')}
+        onClick={() => navigate('/citizen/impact')}
         className="bg-surface rounded-card border border-line p-4 shadow-xs hover:border-moss/40 transition cursor-pointer"
       >
         <div className="flex items-center justify-between mb-2">

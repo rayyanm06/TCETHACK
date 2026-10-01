@@ -19,7 +19,7 @@ type TransitionPhase =
 export const Login: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { login, register, isFirebaseConfigured } = useAuth();
+  const { user, login, register, isFirebaseConfigured } = useAuth();
 
   // Tab: 'CITIZEN' | 'OPERATOR'
   const initialRole = searchParams.get('role') === 'operator' ? 'OPERATOR' : 'CITIZEN';
@@ -35,7 +35,7 @@ export const Login: React.FC = () => {
 
   // Animation & Transition State Machine
   const [phase, setPhase] = useState<TransitionPhase>('idle');
-  const [targetDestination, setTargetDestination] = useState<string>('/');
+  const [targetDestination, setTargetDestination] = useState<string>('/citizen');
   const timeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   // Clear timers on unmount
@@ -44,6 +44,13 @@ export const Login: React.FC = () => {
       timeoutsRef.current.forEach(clearTimeout);
     };
   }, []);
+
+  // Redirect if already logged in and idle
+  useEffect(() => {
+    if (user && phase === 'idle') {
+      navigate(user.role === 'OPERATOR' ? '/operator' : '/citizen', { replace: true });
+    }
+  }, [user, phase, navigate]);
 
   const addTimeout = (fn: () => void, delayMs: number) => {
     const timer = setTimeout(fn, delayMs);
@@ -67,7 +74,7 @@ export const Login: React.FC = () => {
       }
 
       // Determine authenticated destination
-      const destination = authenticatedUser.role === 'OPERATOR' ? '/ops' : '/';
+      const destination = authenticatedUser.role === 'OPERATOR' ? '/operator' : '/citizen';
       setTargetDestination(destination);
 
       // Check prefers-reduced-motion

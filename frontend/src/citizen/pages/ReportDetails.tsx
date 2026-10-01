@@ -107,7 +107,7 @@ export const ReportDetails: React.FC = () => {
       <div className="p-6 bg-surface rounded-card border border-line text-center space-y-3 survey-corner">
         <p className="text-xs text-clay font-medium">{error || 'Unable to load report.'}</p>
         <button
-          onClick={() => navigate('/reports')}
+          onClick={() => navigate('/citizen/reports')}
           className="text-xs text-moss font-semibold underline"
         >
           Return to My Reports
@@ -124,7 +124,7 @@ export const ReportDetails: React.FC = () => {
       {/* Header controls: Back & Refresh */}
       <div className="flex items-center justify-between">
         <button
-          onClick={() => navigate('/reports')}
+          onClick={() => navigate('/citizen/reports')}
           className="flex items-center gap-1.5 text-xs font-semibold text-ink-2 hover:text-ink transition"
         >
           <ArrowLeft className="w-3.5 h-3.5" />

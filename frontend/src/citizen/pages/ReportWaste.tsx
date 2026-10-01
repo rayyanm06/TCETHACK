@@ -836,7 +836,7 @@ export const ReportWaste: React.FC = () => {
             {createdReportId && (
               <button
                 type="button"
-                onClick={() => navigate(`/reports/${createdReportId}`)}
+                onClick={() => navigate(`/citizen/reports/${createdReportId}`)}
                 className="w-full py-2.5 bg-moss hover:bg-moss-700 text-surface font-semibold text-xs rounded shadow"
               >
                 Track This Report
@@ -844,7 +844,7 @@ export const ReportWaste: React.FC = () => {
             )}
             <button
               type="button"
-              onClick={() => navigate('/reports')}
+              onClick={() => navigate('/citizen/reports')}
               className="w-full py-2.5 bg-surface hover:bg-surface-2 border border-line text-ink font-semibold text-xs rounded"
             >
               Go to My Reports

@@ -86,10 +86,10 @@ export const OpsShell: React.FC = () => {
           {/* Lens Switcher: NOW · ROUTES · FORECAST · IMPACT (§6.7) */}
           <nav className="flex items-center gap-1 sm:gap-2">
             {[
-              { id: 'now', label: 'NOW', path: '/ops' },
-              { id: 'routes', label: 'ROUTES', path: '/ops/routes' },
-              { id: 'forecast', label: 'FORECAST', path: '/ops/forecast' },
-              { id: 'impact', label: 'IMPACT', path: '/ops/impact' },
+              { id: 'now', label: 'NOW', path: '/operator' },
+              { id: 'routes', label: 'ROUTES', path: '/operator/routes' },
+              { id: 'forecast', label: 'FORECAST', path: '/operator/forecast' },
+              { id: 'impact', label: 'IMPACT', path: '/operator/impact' },
             ].map((lens) => {
               const isActive = activeLens === lens.id;
               return (
@@ -127,7 +127,7 @@ export const OpsShell: React.FC = () => {
           </div>
 
           <button
-            onClick={() => navigate('/ops/queue')}
+            onClick={() => navigate('/operator/queue')}
             title="Open Table Queue"
             className="p-1.5 rounded hover:bg-surface-2 text-ink-2 flex items-center gap-1 text-xs font-medium"
           >

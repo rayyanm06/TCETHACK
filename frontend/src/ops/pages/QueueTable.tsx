@@ -34,7 +34,7 @@ export const QueueTable: React.FC = () => {
       <header className="bg-surface border-b border-line px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => navigate('/ops')}
+            onClick={() => navigate('/operator')}
             className="flex items-center gap-1.5 text-xs font-semibold text-ink-2 hover:text-ink"
           >
             <ArrowLeft className="w-4 h-4" />

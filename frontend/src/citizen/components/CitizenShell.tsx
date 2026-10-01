@@ -18,7 +18,7 @@ export const CitizenShell: React.FC = () => {
       <header className="sticky top-0 z-30 bg-surface/95 backdrop-blur-md border-b border-line px-4 py-3 sm:px-6 lg:px-8">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-6">
-            <NavLink to="/" className="flex items-center gap-2.5">
+            <NavLink to="/citizen" className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-lg bg-moss flex items-center justify-center text-surface font-serif text-lg font-bold shadow-xs">
                 C
               </div>
@@ -31,7 +31,7 @@ export const CitizenShell: React.FC = () => {
             {/* Desktop Navigation Links */}
             <nav className="hidden md:flex items-center gap-1">
               <NavLink
-                to="/"
+                to="/citizen"
                 end
                 className={({ isActive }) =>
                   `px-3 py-1.5 text-xs font-semibold rounded transition ${
@@ -42,7 +42,7 @@ export const CitizenShell: React.FC = () => {
                 Home
               </NavLink>
               <NavLink
-                to="/reports"
+                to="/citizen/reports"
                 className={({ isActive }) =>
                   `px-3 py-1.5 text-xs font-semibold rounded transition ${
                     isActive ? 'bg-surface-2 text-ink shadow-xs border border-line' : 'text-ink-2 hover:text-ink'
@@ -52,7 +52,7 @@ export const CitizenShell: React.FC = () => {
                 My Reports
               </NavLink>
               <NavLink
-                to="/impact"
+                to="/citizen/impact"
                 className={({ isActive }) =>
                   `px-3 py-1.5 text-xs font-semibold rounded transition ${
                     isActive ? 'bg-surface-2 text-ink shadow-xs border border-line' : 'text-ink-2 hover:text-ink'
@@ -67,7 +67,7 @@ export const CitizenShell: React.FC = () => {
           <div className="flex items-center gap-3">
             {/* Desktop +Report Quick Action */}
             <NavLink
-              to="/report"
+              to="/citizen/report"
               className="hidden md:flex items-center gap-1.5 px-3 py-1.5 bg-moss hover:bg-moss-700 text-surface text-xs font-semibold rounded-card shadow-xs transition"
             >
               <Plus className="w-4 h-4" />
@@ -97,7 +97,7 @@ export const CitizenShell: React.FC = () => {
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-surface/98 backdrop-blur-md border-t border-line shadow-panel px-6 py-2">
         <div className="flex items-center justify-between max-w-md mx-auto">
           <NavLink
-            to="/"
+            to="/citizen"
             end
             className={({ isActive }) =>
               `flex flex-col items-center gap-1 text-[11px] font-medium transition ${
@@ -110,7 +110,7 @@ export const CitizenShell: React.FC = () => {
           </NavLink>
 
           <NavLink
-            to="/reports"
+            to="/citizen/reports"
             className={({ isActive }) =>
               `flex flex-col items-center gap-1 text-[11px] font-medium transition ${
                 isActive ? 'text-moss font-bold' : 'text-ink-3 hover:text-ink'
@@ -123,7 +123,7 @@ export const CitizenShell: React.FC = () => {
 
           {/* Central Raised ＋Report Action */}
           <NavLink
-            to="/report"
+            to="/citizen/report"
             className="flex flex-col items-center -mt-5"
           >
             <div className="w-12 h-12 rounded-full bg-moss hover:bg-moss-700 text-surface flex items-center justify-center shadow-lg transition transform active:scale-95">
@@ -133,7 +133,7 @@ export const CitizenShell: React.FC = () => {
           </NavLink>
 
           <NavLink
-            to="/impact"
+            to="/citizen/impact"
             className={({ isActive }) =>
               `flex flex-col items-center gap-1 text-[11px] font-medium transition ${
                 isActive ? 'text-moss font-bold' : 'text-ink-3 hover:text-ink'

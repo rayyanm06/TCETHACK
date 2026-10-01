@@ -744,4 +744,54 @@ describe('CivicClean End-to-End Workflow & Security Regression Suite', { concurr
     const data = await res.json();
     assert.equal(data.error.code, 'VALIDATION_ERROR');
   });
+
+  test('18. Firebase sync correctly assigns OPERATOR role to civicclean.operator@gmail.com and grants operator access', async () => {
+    const testFbUid = `fb_test_operator_${Date.now()}`;
+    const res = await fetch(`${API_BASE}/auth/firebase-sync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        firebaseUid: testFbUid,
+        email: 'civicclean.operator@gmail.com',
+        name: 'Dilip Operator',
+      }),
+    });
+
+    assert.equal(res.status, 200);
+    const data = await res.json();
+    assert.equal(data.user.role, 'OPERATOR');
+
+    // Verify token grants access to operator routes
+    const authCheck = await fetch(`${API_BASE}/complaints?includeResolved=true`, {
+      headers: { Authorization: `Bearer ${data.token}` },
+    });
+    assert.equal(authCheck.status, 200);
+    const complaintsData = await authCheck.json();
+    assert.ok(complaintsData.counts, 'Operator response must contain ticker counts');
+  });
+
+  test('19. Firebase sync strictly assigns CITIZEN role to non-operator emails and denies operator operations', async () => {
+    const testFbUid = `fb_test_citizen_${Date.now()}`;
+    const res = await fetch(`${API_BASE}/auth/firebase-sync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        firebaseUid: testFbUid,
+        email: 'random.citizen@example.com',
+        name: 'Normal Citizen',
+      }),
+    });
+
+    assert.equal(res.status, 200);
+    const data = await res.json();
+    assert.equal(data.user.role, 'CITIZEN');
+
+    // Citizen attempting operator-only route must be forbidden
+    const fakeId = '000000000000000000000001';
+    const forbiddenCheck = await fetch(`${API_BASE}/complaints/${fakeId}`, {
+      headers: { Authorization: `Bearer ${data.token}` },
+    });
+    assert.equal(forbiddenCheck.status, 403);
+  });
 });
+

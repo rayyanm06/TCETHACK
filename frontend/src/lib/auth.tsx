@@ -36,6 +36,15 @@ export function formatFirebaseAuthError(error: any): string {
   }
 }
 
+export const OPERATOR_EMAIL = (
+  import.meta.env.VITE_OPERATOR_EMAIL || 'civicclean.operator@gmail.com'
+).toLowerCase().trim();
+
+export function resolveUserRole(email?: string | null): 'OPERATOR' | 'CITIZEN' {
+  if (!email) return 'CITIZEN';
+  return email.toLowerCase().trim() === OPERATOR_EMAIL ? 'OPERATOR' : 'CITIZEN';
+}
+
 interface AuthContextType {
   user: User | null;
   firebaseUser: FirebaseUser | null;
@@ -74,9 +83,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             email: fbUser.email,
             name: fbUser.displayName || fbUser.email.split('@')[0],
           });
+
+          // Determine role strictly by exact email comparison with configured OPERATOR_EMAIL
+          const resolvedRole = resolveUserRole(fbUser.email);
+          const finalUser: User = {
+            ...data.user,
+            role: resolvedRole,
+          };
+
           api.setToken(data.token);
           setToken(data.token);
-          setUser(data.user);
+          setUser(finalUser);
         } catch (err) {
           console.error('[CivicClean] Session synchronization failed:', err);
           setUser(null);
@@ -114,10 +131,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         name: fbUser.displayName || email.trim().split('@')[0],
       });
 
+      // Exact email comparison determines role
+      const resolvedRole = resolveUserRole(fbUser.email || email);
+      const finalUser: User = {
+        ...data.user,
+        role: resolvedRole,
+      };
+
       api.setToken(data.token);
       setToken(data.token);
-      setUser(data.user);
-      return data.user;
+      setUser(finalUser);
+      return finalUser;
     } catch (err: any) {
       const friendlyMsg = formatFirebaseAuthError(err);
       const customErr = new Error(friendlyMsg);
@@ -157,10 +181,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         name: name.trim() || 'Citizen',
       });
 
+      const resolvedRole = resolveUserRole(fbUser.email || email);
+      const finalUser: User = {
+        ...data.user,
+        role: resolvedRole,
+      };
+
       api.setToken(data.token);
       setToken(data.token);
-      setUser(data.user);
-      return data.user;
+      setUser(finalUser);
+      return finalUser;
     } catch (err: any) {
       const friendlyMsg = formatFirebaseAuthError(err);
       const customErr = new Error(friendlyMsg);
