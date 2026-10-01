@@ -13,6 +13,7 @@ import { computePriority } from '../engines/priority.js';
 import { calculateSupportCredits, CREDIT_VALUES, TRANSACTION_STATUSES, TRANSACTION_TYPES } from '../engines/impact.js';
 import { isInsideBoundingBox, haversineDistance } from '../engines/geo.js';
 import { THRESHOLDS } from '../config/thresholds.js';
+import { createOperatorNotification } from './notificationService.js';
 
 /**
  * Validates file buffer content to verify it is an actual JPEG, PNG, or WebP image.
@@ -633,6 +634,21 @@ export async function reopenResolvedReport(reportId, { reason }, userId) {
       },
       { session }
     );
+
+    // Create persistent operator notification for disputed resolution
+    await createOperatorNotification({
+      eventId: event._id,
+      eventCode: event.code,
+      type: 'REOPENED',
+      title: `Dispute Escalated: ${event.code} Reopened`,
+      message: `Citizen reported clearance issue: "${event.reopenReason}". Immediate re-inspection required.`,
+      severity: 'HIGH',
+      locationText: event.addressText,
+      coordinates: event.location?.coordinates
+        ? { lat: event.location.coordinates[1], lng: event.location.coordinates[0] }
+        : undefined,
+      dedupKey: `op_reopened_${event._id}_${Date.now()}`,
+    });
 
     return {
       ok: true,

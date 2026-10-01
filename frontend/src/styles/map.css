@@ -160,31 +160,40 @@
   animation: plumBreathe 4s ease-in-out infinite;
 }
 
-/* Civic Garbage Truck Marker (§Uber/Ola Style Live Vehicle) */
+/* Civic Garbage Truck Marker (Real Road Tracking / Smooth Vehicle Orientation) */
 .civic-truck-container {
   position: relative;
-  width: 48px;
-  height: 48px;
+  width: 58px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   z-index: 1000 !important;
+  /* Leaflet applies translate3d here. We NEVER apply rotation to the container itself. */
 }
 
 .truck-heading-wrapper {
-  width: 42px;
-  height: 42px;
+  width: 54px;
+  height: 26px;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: transform 0.15s ease-out;
+  transition: transform 0.12s cubic-bezier(0.2, 0, 0.2, 1);
   transform-origin: center center;
+  will-change: transform;
+}
+
+.truck-svg-artwork {
+  width: 54px;
+  height: 26px;
+  display: block;
+  filter: drop-shadow(0 2px 4px rgba(23, 35, 28, 0.35));
 }
 
 .truck-live-badge {
   position: absolute;
-  bottom: -2px;
+  bottom: -8px;
   left: 50%;
   transform: translateX(-50%);
   background-color: var(--ink);
@@ -196,29 +205,30 @@
   padding: 1px 4px;
   border-radius: 3px;
   border: 1px solid var(--surface);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
   pointer-events: none;
   white-space: nowrap;
+  z-index: 10;
 }
 
 .civic-truck-container.is-moving::before {
   content: '';
   position: absolute;
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(14, 106, 120, 0.25) 0%, rgba(14, 106, 120, 0) 70%);
+  width: 54px;
+  height: 26px;
+  border-radius: 13px;
+  background: radial-gradient(circle, rgba(14, 106, 120, 0.35) 0%, rgba(14, 106, 120, 0) 75%);
   animation: truckPulse 1.5s ease-out infinite;
   pointer-events: none;
 }
 
 @keyframes truckPulse {
   0% {
-    transform: scale(0.8);
-    opacity: 0.8;
+    transform: scale(0.85);
+    opacity: 0.85;
   }
   100% {
-    transform: scale(1.6);
+    transform: scale(1.45);
     opacity: 0;
   }
 }

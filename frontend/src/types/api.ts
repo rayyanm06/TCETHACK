@@ -185,8 +185,21 @@ export interface RouteStop {
   legDurationMin: number;
   legBaseDurationMin: number;
   arrivalOffsetMin: number;
-  state: 'PENDING' | 'DONE';
+  state: 'PENDING' | 'EN_ROUTE' | 'ARRIVED' | 'DONE' | 'SKIPPED';
+  arrivedAt?: string;
+  arrivalType?: 'GPS_PROXIMITY' | 'MANUAL_OVERRIDE';
+  arrivalReason?: string;
   completedAt?: string;
+  completedBy?: string;
+  completionPhotoUrl?: string;
+  completionPublicId?: string;
+  operatorNote?: string;
+  aiReview?: {
+    assessment: 'APPEARS_CLEARED' | 'WASTE_REMAINS' | 'UNABLE_TO_ASSESS';
+    confidence: number;
+    shortReason: string;
+    provider?: string;
+  };
 }
 
 export interface RouteDeferred {
@@ -235,6 +248,16 @@ export interface RouteData {
   congestionZones: CongestionZone[];
   trafficMode: 'NONE' | 'SIMULATED';
   costSource: 'OSRM' | 'ESTIMATE';
+  liveTracking?: {
+    lat: number;
+    lng: number;
+    accuracyM: number;
+    heading: number;
+    speedMs: number;
+    timestamp: string;
+    isLive: boolean;
+    deviceId?: string;
+  };
 }
 
 export interface RoutePreviewResponse {

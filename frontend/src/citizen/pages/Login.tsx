@@ -182,7 +182,8 @@ export const Login: React.FC = () => {
         )}
 
         {/* B. Stylized Municipal Garbage Truck */}
-        {(phase === 'truck_entering' ||
+        {(phase === 'transforming' ||
+          phase === 'truck_entering' ||
           phase === 'collecting' ||
           phase === 'driving_away' ||
           phase === 'revealing_dashboard') && (
@@ -206,9 +207,11 @@ export const Login: React.FC = () => {
                   : phase === 'collecting'
                   ? 'translate(-65%, -2px) scale(1)'
                   : phase === 'driving_away'
-                  ? 'translate(-10%, -220px) scale(0.22) rotate(-3deg)'
-                  : 'translate(20%, -300px) scale(0.08) rotate(-4deg)',
-              opacity: phase === 'revealing_dashboard' ? 0.3 : 1,
+                  ? 'translate(30px, -200px) scale(0.24) rotate(5deg)'
+                  : phase === 'revealing_dashboard'
+                  ? 'translate(65px, -290px) scale(0.08) rotate(7deg)'
+                  : 'translate(-160%, 0) scale(1)',
+              opacity: phase === 'revealing_dashboard' ? 0.3 : phase === 'transforming' ? 0.8 : 1,
             }}
           >
             <GarbageTruck
@@ -219,7 +222,9 @@ export const Login: React.FC = () => {
                   ? 'collecting'
                   : phase === 'driving_away'
                   ? 'driving'
-                  : 'vanished'
+                  : phase === 'revealing_dashboard'
+                  ? 'driving'
+                  : 'idle'
               }
             />
           </div>

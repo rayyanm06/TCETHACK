@@ -9,6 +9,18 @@ const notificationSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    recipientUserId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+      index: true,
+    },
+    reportId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Report',
+      default: null,
+      index: true,
+    },
     type: {
       type: String,
       enum: [
@@ -19,6 +31,12 @@ const notificationSchema = new mongoose.Schema(
         'RESOLUTION',
         'OVERDUE',
         'SYSTEM',
+        'VERIFIED',
+        'ASSIGNED',
+        'ARRIVED',
+        'COLLECTED',
+        'REJECTED',
+        'REOPENED',
       ],
       required: true,
       index: true,

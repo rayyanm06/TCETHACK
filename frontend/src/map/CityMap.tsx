@@ -12,6 +12,7 @@ import {
   createDepotMarker,
   createStopTransitIcon,
   createGarbageTruckMarker,
+  updateTruckMarkerElement,
 } from './markerUtils.ts';
 import '../styles/map.css';
 
@@ -74,6 +75,7 @@ export const CityMap: React.FC<CityMapProps> = ({
   const mapInstanceRef = useRef<L.Map | null>(null);
   const layerGroupRef = useRef<L.LayerGroup | null>(null);
   const truckLayerRef = useRef<L.LayerGroup | null>(null);
+  const truckMarkerRef = useRef<L.Marker | null>(null);
 
   // Initialize Leaflet map once
   useEffect(() => {
@@ -406,48 +408,70 @@ export const CityMap: React.FC<CityMapProps> = ({
     historyCells,
   ]);
 
-  // Update dynamic truck position on dedicated lightweight layer without rebuilding the entire map
+  // Update dynamic truck position and orientation smoothly without tearing down the Leaflet marker
   useEffect(() => {
     const truckLayer = truckLayerRef.current;
     if (!truckLayer) return;
 
-    truckLayer.clearLayers();
-
     if (route && (truckPosition || (route.geometry && route.geometry.length > 0))) {
       const pos = truckPosition || route.geometry[0];
       if (pos) {
-        const truckMarker = L.marker(pos, {
-          icon: createGarbageTruckMarker(
+        const vehicleName = route.vehicle?.name || 'MH-02-PILOT-01';
+
+        if (truckMarkerRef.current && truckLayer.hasLayer(truckMarkerRef.current)) {
+          // Leaflet updates geographic screen position via its own transform: translate3d
+          truckMarkerRef.current.setLatLng(pos);
+          // Inner CSS transform rotates the vehicle marker without interfering with Leaflet
+          updateTruckMarkerElement(
+            truckMarkerRef.current.getElement(),
             truckHeading,
-            route.vehicle?.name || 'MH-02-PILOT-01',
-            isTruckMoving
-          ),
-          zIndexOffset: 1200,
-        });
+            isTruckMoving,
+            vehicleName
+          );
+        } else {
+          // Initialize marker on first placement
+          truckLayer.clearLayers();
+          const truckMarker = L.marker(pos, {
+            icon: createGarbageTruckMarker(
+              truckHeading,
+              vehicleName,
+              isTruckMoving
+            ),
+            zIndexOffset: 1200,
+          });
 
-        truckMarker.bindPopup(
-          `<div class="p-2 font-sans text-xs">
-            <div class="flex items-center gap-1.5 font-bold text-ink">
-              <span>🚚</span>
-              <span>${route.vehicle?.name || 'Municipal Compactor'}</span>
-            </div>
-            <div class="text-[11px] text-ink-3 mt-1">
-              Status: <b>${isTruckMoving ? 'In Transit Along Road' : 'Stationary / Loading'}</b>
-            </div>
-            <div class="text-[10px] text-ink-2 mt-0.5 font-mono">
-              GPS Heading: ${Math.round(truckHeading)}°
-            </div>
-          </div>`
-        );
+          truckMarker.bindPopup(
+            `<div class="p-2 font-sans text-xs">
+              <div class="flex items-center gap-1.5 font-bold text-ink">
+                <span>🚚</span>
+                <span>${vehicleName}</span>
+              </div>
+              <div class="text-[11px] text-ink-3 mt-1">
+                Status: <b>${isTruckMoving ? 'In Transit Along Road' : 'Stationary / Loading'}</b>
+              </div>
+              <div class="text-[10px] text-ink-2 mt-0.5 font-mono">
+                Heading: ${Math.round(truckHeading)}°
+              </div>
+            </div>`
+          );
 
-        truckMarker.on('click', () => {
-          if (onSelectTruck) onSelectTruck();
-        });
+          truckMarker.on('click', () => {
+            if (onSelectTruck) onSelectTruck();
+          });
 
-        truckMarker.addTo(truckLayer);
+          truckMarker.addTo(truckLayer);
+          truckMarkerRef.current = truckMarker;
+        }
+        return;
       }
     }
-  }, [route, truckPosition, truckHeading, isTruckMoving]);
+
+    // Clean up marker if route is cleared
+    if (truckMarkerRef.current) {
+      truckLayer.clearLayers();
+      truckMarkerRef.current = null;
+    }
+  }, [route, truckPosition, truckHeading, isTruckMoving, onSelectTruck]);
 
   // Pan to selected event if changed
   useEffect(() => {

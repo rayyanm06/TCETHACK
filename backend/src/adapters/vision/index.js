@@ -25,3 +25,54 @@ export async function classifyImage(fileBuffer, mimeType = 'image/jpeg') {
     provider: 'none',
   };
 }
+
+export async function compareCollectionEvidence(
+  beforeBufferOrUrl,
+  beforeMime = 'image/jpeg',
+  afterBuffer,
+  afterMime = 'image/jpeg'
+) {
+  if (ENV.VISION_PROVIDER === 'gemini' && ENV.GEMINI_API_KEY) {
+    try {
+      let beforeBuffer = beforeBufferOrUrl;
+      let resolvedBeforeMime = beforeMime;
+
+      if (typeof beforeBufferOrUrl === 'string' && beforeBufferOrUrl.startsWith('http')) {
+        const fetchRes = await fetch(beforeBufferOrUrl);
+        if (fetchRes.ok) {
+          const arrayBuf = await fetchRes.arrayBuffer();
+          beforeBuffer = Buffer.from(arrayBuf);
+          resolvedBeforeMime = fetchRes.headers.get('content-type') || beforeMime;
+        } else {
+          return {
+            status: 'UNAVAILABLE',
+            assessment: 'UNABLE_TO_ASSESS',
+            confidence: null,
+            shortReason: 'Could not retrieve original incident photo for comparison. Manual operator inspection required.',
+            provider: 'gemini',
+          };
+        }
+      }
+
+      if (Buffer.isBuffer(beforeBuffer) && Buffer.isBuffer(afterBuffer)) {
+        return await compareEvidenceWithGemini(
+          beforeBuffer,
+          resolvedBeforeMime,
+          afterBuffer,
+          afterMime
+        );
+      }
+    } catch (err) {
+      console.warn('[Vision] Gemini compare error:', err.message);
+    }
+  }
+
+  // Honest fallback: never fabricate AI results
+  return {
+    status: 'UNAVAILABLE',
+    assessment: 'UNABLE_TO_ASSESS',
+    confidence: null,
+    shortReason: 'AI vision provider unavailable or not configured. Manual operator inspection required.',
+    provider: 'none',
+  };
+}

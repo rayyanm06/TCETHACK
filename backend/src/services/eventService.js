@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { WasteEvent } from '../models/WasteEvent.js';
 import { Report } from '../models/Report.js';
 import { StatusEvent } from '../models/StatusEvent.js';
@@ -10,6 +11,7 @@ import { signUploadToken, verifyUploadToken } from '../utils/token.js';
 import { withTransaction } from '../utils/transaction.js';
 import { CREDIT_VALUES, TRANSACTION_STATUSES, TRANSACTION_TYPES } from '../engines/impact.js';
 import { computeHotspotBlocks } from '../data/hotspotBlocks.js';
+import { createCitizenNotification } from './notificationService.js';
 
 function validateImageBuffer(buffer) {
   if (!buffer || buffer.length < 12) return false;
@@ -408,6 +410,22 @@ export async function updateOperatorEvent(eventId, data, userId) {
 
       await Report.updateMany({ complaintId: event._id }, { state: 'REJECTED' }, { session });
 
+      // Notify citizen reports of rejection with reason
+      const rejectedReports = await Report.find({ complaintId: event._id }).session(session).lean();
+      for (const rep of rejectedReports) {
+        await createCitizenNotification({
+          recipientUserId: rep.citizenId,
+          reportId: rep._id,
+          eventId: event._id,
+          eventCode: event.code,
+          type: 'REJECTED',
+          title: `Report Not Accepted: ${event.code}`,
+          message: `Your report was inspected by municipal operators: ${event.rejectReason || 'Inspection criteria not met.'}`,
+          severity: 'NORMAL',
+          dedupKey: `cit_rej_${event._id}_${rep._id}`,
+        });
+      }
+
       return { event, impactSummary };
     });
   }
@@ -508,6 +526,22 @@ export async function updateOperatorEvent(eventId, data, userId) {
           impactSummary.verified++;
         }
         await tx.save({ session });
+      }
+
+      // Notify citizen reports of verification
+      const verifiedReports = await Report.find({ complaintId: event._id }).session(session).lean();
+      for (const rep of verifiedReports) {
+        await createCitizenNotification({
+          recipientUserId: rep.citizenId,
+          reportId: rep._id,
+          eventId: event._id,
+          eventCode: event.code,
+          type: 'VERIFIED',
+          title: `Report Verified: ${event.code}`,
+          message: `Your report was verified by municipal operators (~${event.estimatedWeightKg} kg ${event.category.toLowerCase()}) at ${priorityResult.tier} priority. Queued for collection dispatch.`,
+          severity: 'NORMAL',
+          dedupKey: `cit_verif_${event._id}_${rep._id}`,
+        });
       }
 
       return { event, impactSummary };
@@ -757,6 +791,22 @@ export async function resolveOperatorEvent(eventId, data, userId) {
           );
         }
       }
+    }
+
+    // Notify citizen reports of collection resolution
+    const resolvedReports = await Report.find({ complaintId: event._id }).session(session).lean();
+    for (const rep of resolvedReports) {
+      await createCitizenNotification({
+        recipientUserId: rep.citizenId,
+        reportId: rep._id,
+        eventId: event._id,
+        eventCode: event.code,
+        type: 'COLLECTED',
+        title: `Collection Confirmed: ${event.code}`,
+        message: `Waste clearance confirmed by operator inspection with photographic proof. Resolution impact credits credited!`,
+        severity: 'NORMAL',
+        dedupKey: `cit_res_${event._id}_${rep._id}`,
+      });
     }
 
     return { event, route: routeUpdate };

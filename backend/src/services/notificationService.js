@@ -179,6 +179,109 @@ export async function syncOperatorNotifications() {
 }
 
 /**
+ * Creates or updates a citizen-facing notification with deduplication
+ */
+export async function createCitizenNotification({
+  recipientUserId,
+  reportId = null,
+  eventId = null,
+  eventCode = null,
+  type,
+  title,
+  message,
+  severity = 'NORMAL',
+  coordinates = null,
+  locationText = null,
+  dedupKey,
+}) {
+  if (!recipientUserId) return null;
+  const existing = await Notification.findOne({ dedupKey });
+  if (existing) return existing;
+
+  return await Notification.create({
+    recipientRole: 'CITIZEN',
+    recipientUserId,
+    reportId,
+    eventId,
+    eventCode,
+    type,
+    title,
+    message,
+    severity,
+    coordinates: coordinates || undefined,
+    locationText,
+    isRead: false,
+    dedupKey,
+  });
+}
+
+/**
+ * Creates or updates an operator-facing notification with deduplication
+ */
+export async function createOperatorNotification({
+  eventId = null,
+  eventCode = null,
+  type,
+  title,
+  message,
+  severity = 'NORMAL',
+  coordinates = null,
+  locationText = null,
+  dedupKey,
+}) {
+  const existing = await Notification.findOne({ dedupKey });
+  if (existing) return existing;
+
+  return await Notification.create({
+    recipientRole: 'OPERATOR',
+    eventId,
+    eventCode,
+    type,
+    title,
+    message,
+    severity,
+    coordinates: coordinates || undefined,
+    locationText,
+    isRead: false,
+    dedupKey,
+  });
+}
+
+/**
+ * Returns citizen notifications for a specific user
+ */
+export async function getCitizenNotifications(userId) {
+  const query = {
+    $or: [{ recipientUserId: userId }, { recipientRole: 'CITIZEN', recipientUserId: userId }],
+  };
+
+  const items = await Notification.find(query).sort({ createdAt: -1 }).limit(50).lean();
+  const unreadCount = await Notification.countDocuments({
+    ...query,
+    isRead: false,
+  });
+
+  return {
+    items: items.map((n) => ({
+      id: n._id.toString(),
+      type: n.type,
+      title: n.title,
+      message: n.message,
+      severity: n.severity,
+      eventId: n.eventId ? n.eventId.toString() : null,
+      eventCode: n.eventCode,
+      reportId: n.reportId ? n.reportId.toString() : null,
+      locationText: n.locationText,
+      coordinates: n.coordinates,
+      isRead: n.isRead,
+      createdAt: n.createdAt,
+    })),
+    unreadCount,
+    criticalCount: 0,
+  };
+}
+
+/**
  * Returns operator notifications with counts
  */
 export async function getOperatorNotifications(filter = 'ALL') {
@@ -222,12 +325,20 @@ export async function getOperatorNotifications(filter = 'ALL') {
   };
 }
 
-export async function markNotificationRead(id) {
-  const updated = await Notification.findByIdAndUpdate(id, { isRead: true }, { new: true }).lean();
+export async function markNotificationRead(id, userId, role) {
+  const query = { _id: id };
+  if (role === 'CITIZEN') {
+    query.recipientUserId = userId;
+  }
+  const updated = await Notification.findOneAndUpdate(query, { isRead: true }, { new: true }).lean();
   return updated;
 }
 
-export async function markAllNotificationsRead() {
-  await Notification.updateMany({ recipientRole: 'OPERATOR' }, { isRead: true });
+export async function markAllNotificationsRead(userId, role) {
+  if (role === 'CITIZEN') {
+    await Notification.updateMany({ recipientUserId: userId, isRead: false }, { isRead: true });
+  } else {
+    await Notification.updateMany({ recipientRole: 'OPERATOR', isRead: false }, { isRead: true });
+  }
   return { ok: true };
 }

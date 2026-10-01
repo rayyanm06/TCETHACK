@@ -17,6 +17,24 @@ export function calculateBearing(lat1: number, lng1: number, lat2: number, lng2:
 }
 
 /**
+ * Calculates the shortest angular difference in degrees from fromDeg to toDeg (-180° to +180°)
+ */
+export function shortestAngleDiff(fromDeg: number, toDeg: number): number {
+  let diff = (toDeg - fromDeg) % 360;
+  if (diff > 180) diff -= 360;
+  if (diff < -180) diff += 360;
+  return diff;
+}
+
+/**
+ * Interpolates between two heading angles along the shortest angular arc
+ */
+export function interpolateAngle(fromDeg: number, toDeg: number, t: number): number {
+  const diff = shortestAngleDiff(fromDeg, toDeg);
+  return (fromDeg + diff * Math.max(0, Math.min(1, t)) + 360) % 360;
+}
+
+/**
  * Calculates great-circle distance between two points in meters
  */
 export function haversineDistanceM(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -296,7 +314,27 @@ export function useRouteSimulation(
     const lng = p0[1] + ratio * (p1[1] - p0[1]);
     const currentPoint: [number, number] = [lat, lng];
 
-    const heading = calculateBearing(p0[0], p0[1], p1[0], p1[1]);
+    const currHeading = calculateBearing(p0[0], p0[1], p1[0], p1[1]);
+    let heading = currHeading;
+
+    // Natural vehicle steering: smoothly blend heading when approaching or departing road intersections
+    const TURN_BLEND_METERS = 18;
+    const distToVertex = d1 - currentDistanceM;
+    const distFromVertex = currentDistanceM - d0;
+
+    if (distToVertex < TURN_BLEND_METERS && segIdx + 2 < geometry.length) {
+      // Approaching next vertex: steer smoothly into upcoming road segment
+      const p2 = geometry[segIdx + 2];
+      const nextHeading = calculateBearing(p1[0], p1[1], p2[0], p2[1]);
+      const t = (TURN_BLEND_METERS - distToVertex) / (TURN_BLEND_METERS * 2); // 0 -> 0.5
+      heading = interpolateAngle(currHeading, nextHeading, t);
+    } else if (distFromVertex < TURN_BLEND_METERS && segIdx > 0) {
+      // Departing previous vertex: complete smooth straightening onto current segment
+      const pPrev = geometry[segIdx - 1];
+      const prevHeading = calculateBearing(pPrev[0], pPrev[1], p0[0], p0[1]);
+      const t = 0.5 + (distFromVertex / (TURN_BLEND_METERS * 2)); // 0.5 -> 1.0
+      heading = interpolateAngle(prevHeading, currHeading, t);
+    }
 
     const compGeom = [...geometry.slice(0, segIdx + 1), currentPoint];
     const remGeom = [currentPoint, ...geometry.slice(segIdx + 1)];

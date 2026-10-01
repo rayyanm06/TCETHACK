@@ -2,6 +2,7 @@ import React from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../lib/auth.tsx';
 import { Home, ClipboardList, Plus, Award, LogOut, Shield } from 'lucide-react';
+import { CitizenNotificationCenter } from './CitizenNotificationCenter.tsx';
 
 export const CitizenShell: React.FC = () => {
   const { user, logout } = useAuth();
@@ -77,6 +78,10 @@ export const CitizenShell: React.FC = () => {
             <span className="text-xs font-medium text-ink-2 hidden sm:inline">
               {user?.name}
             </span>
+
+            {/* Real Citizen Notification Center */}
+            <CitizenNotificationCenter />
+
             <button
               onClick={handleLogout}
               title="Sign Out"

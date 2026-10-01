@@ -217,7 +217,7 @@ export const ReportDetails: React.FC = () => {
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2 text-moss-700 font-bold text-xs">
               <CheckCircle2 className="w-4 h-4" />
-              <span>Clearance Completion Record</span>
+              <span>Collection confirmed by operator</span>
             </div>
             <button
               onClick={() => setShowReopenForm(!showReopenForm)}
@@ -226,6 +226,10 @@ export const ReportDetails: React.FC = () => {
               <RotateCcw className="w-3 h-3" />
               <span>Dispute / Waste Still There</span>
             </button>
+          </div>
+
+          <div className="text-[11px] text-ink-3">
+            Physical clearance verified and signed off by authorized municipal collection operator.
           </div>
 
           {/* Clearance Photograph */}

@@ -1,11 +1,16 @@
 import { Route } from '../models/Route.js';
 import { Vehicle } from '../models/Vehicle.js';
 import { WasteEvent } from '../models/WasteEvent.js';
+import { Report } from '../models/Report.js';
 import { StatusEvent } from '../models/StatusEvent.js';
 import { planCollectionRoute, sequenceStops } from '../engines/routing.js';
 import { applyCongestionToMatrix } from '../engines/traffic.js';
 import { getDurationMatrix, getRouteGeometry } from '../adapters/routing/index.js';
 import { withTransaction } from '../utils/transaction.js';
+import { haversineDistance } from '../engines/geo.js';
+import { createCitizenNotification } from './notificationService.js';
+import { resolveOperatorEvent } from './eventService.js';
+import { compareCollectionEvidence } from '../adapters/vision/index.js';
 
 export async function previewRoute(
   {
@@ -263,6 +268,23 @@ export async function assignRoute(routeId, userId) {
       );
     }
 
+    // Notify linked citizen report owners
+    const linkedReports = await Report.find({ complaintId: { $in: stopEventIds } }).session(session).lean();
+    for (const rep of linkedReports) {
+      const evObj = currentEvents.find((e) => e._id.toString() === rep.complaintId.toString());
+      await createCitizenNotification({
+        recipientUserId: rep.citizenId,
+        reportId: rep._id,
+        eventId: rep.complaintId,
+        eventCode: evObj?.code || 'Incident',
+        type: 'ASSIGNED',
+        title: `Collection Scheduled: ${evObj?.code || 'Incident'}`,
+        message: `Your report has been assigned to municipal collection vehicle for pickup dispatch.`,
+        severity: 'NORMAL',
+        dedupKey: `cit_assign_${route._id}_${rep.complaintId}_${rep._id}`,
+      });
+    }
+
     const updatedEvents = await WasteEvent.find({ _id: { $in: stopEventIds } })
       .session(session)
       .lean();
@@ -454,4 +476,305 @@ export async function getRouteById(routeId) {
 export async function getVehicles() {
   const vehicles = await Vehicle.find({ isActive: true }).lean();
   return { items: vehicles };
+}
+
+/**
+ * Persists timestamped GPS telemetry from an authenticated collection device session
+ */
+export async function recordTelemetry(routeId, telemetryData, userId) {
+  const route = await Route.findById(routeId);
+  if (!route) {
+    const err = new Error('Route not found.');
+    err.status = 404;
+    err.code = 'NOT_FOUND';
+    throw err;
+  }
+
+  const { lat, lng, accuracyM = 10, heading = 0, speedMs = 0, timestamp, deviceId } = telemetryData;
+  if (typeof lat !== 'number' || typeof lng !== 'number' || isNaN(lat) || isNaN(lng)) {
+    const err = new Error('Invalid GPS coordinates provided.');
+    err.status = 400;
+    err.code = 'INVALID_COORDINATES';
+    throw err;
+  }
+
+  route.liveTracking = {
+    lat,
+    lng,
+    accuracyM: Math.round(accuracyM * 10) / 10,
+    heading: Math.round(heading),
+    speedMs: Math.round(speedMs * 10) / 10,
+    timestamp: timestamp ? new Date(timestamp) : new Date(),
+    isLive: true,
+    updatedBy: userId,
+    deviceId: deviceId || 'browser-collector',
+  };
+
+  // Check proximity to active stop
+  const activeStop = route.stops.find(
+    (s) => s.state === 'PENDING' || s.state === 'EN_ROUTE' || s.state === 'ARRIVED'
+  );
+  let activeStopInfo = null;
+
+  if (activeStop) {
+    const ev = await WasteEvent.findById(activeStop.eventId).lean();
+    if (ev && ev.location?.coordinates) {
+      const stopCoord = { lat: ev.location.coordinates[1], lng: ev.location.coordinates[0] };
+      const distM = haversineDistance({ lat, lng }, stopCoord);
+      const isNear = distM <= Math.max(50, accuracyM + 25);
+      activeStopInfo = {
+        eventId: activeStop.eventId.toString(),
+        seq: activeStop.seq,
+        distanceM: Math.round(distM),
+        isNear,
+        addressText: ev.addressText,
+      };
+    }
+  }
+
+  await route.save();
+
+  return {
+    ok: true,
+    liveTracking: route.liveTracking,
+    activeStop: activeStopInfo,
+  };
+}
+
+/**
+ * Transitions stop state to ARRIVED using GPS proximity or authorized manual override
+ */
+export async function recordStopArrival(
+  routeId,
+  eventId,
+  { arrivalType = 'GPS_PROXIMITY', arrivalReason = '', lat, lng, accuracyM },
+  userId
+) {
+  const route = await Route.findById(routeId);
+  if (!route) {
+    const err = new Error('Route not found.');
+    err.status = 404;
+    err.code = 'NOT_FOUND';
+    throw err;
+  }
+
+  if (route.status === 'DRAFT') {
+    const err = new Error('Route must be assigned before recording stop arrivals.');
+    err.status = 409;
+    err.code = 'ROUTE_NOT_ASSIGNED';
+    throw err;
+  }
+
+  const stop = route.stops.find((s) => s.eventId.toString() === eventId.toString());
+  if (!stop) {
+    const err = new Error('Stop not found in this route.');
+    err.status = 404;
+    err.code = 'STOP_NOT_FOUND';
+    throw err;
+  }
+
+  if (stop.state === 'DONE') {
+    const err = new Error('This stop collection has already been completed.');
+    err.status = 409;
+    err.code = 'STOP_ALREADY_DONE';
+    throw err;
+  }
+
+  if (arrivalType === 'MANUAL_OVERRIDE' && (!arrivalReason || !arrivalReason.trim())) {
+    const err = new Error(
+      'A recorded reason is strictly required for manual arrival confirmation when GPS is unavailable.'
+    );
+    err.status = 400;
+    err.code = 'REASON_REQUIRED';
+    throw err;
+  }
+
+  // Update stop state
+  stop.state = 'ARRIVED';
+  stop.arrivedAt = new Date();
+  stop.arrivalType = arrivalType;
+  stop.arrivalReason = arrivalReason.trim() || 'GPS proximity detected at collection coordinates.';
+
+  if (route.status === 'ASSIGNED') {
+    route.status = 'IN_PROGRESS';
+  }
+
+  // Update live tracking if lat/lng provided
+  if (typeof lat === 'number' && typeof lng === 'number') {
+    route.liveTracking = {
+      lat,
+      lng,
+      accuracyM: Number(accuracyM) || 10,
+      heading: route.liveTracking?.heading || 0,
+      speedMs: 0,
+      timestamp: new Date(),
+      isLive: true,
+      updatedBy: userId,
+      deviceId: route.liveTracking?.deviceId || 'browser-collector',
+    };
+  }
+
+  await route.save();
+
+  // Create StatusEvent
+  await StatusEvent.create({
+    entityType: 'COMPLAINT',
+    entityId: eventId,
+    from: 'SCHEDULED',
+    to: 'SCHEDULED',
+    actorId: userId,
+    actorRole: 'OPERATOR',
+    note: `Collection crew arrived at stop (${
+      arrivalType === 'MANUAL_OVERRIDE'
+        ? `Manual confirmation: ${stop.arrivalReason}`
+        : 'GPS proximity confirmation'
+    }).`,
+  });
+
+  // Notify linked citizen reports
+  const event = await WasteEvent.findById(eventId).lean();
+  if (event) {
+    const reports = await Report.find({ complaintId: event._id }).lean();
+    for (const rep of reports) {
+      await createCitizenNotification({
+        recipientUserId: rep.citizenId,
+        reportId: rep._id,
+        eventId: event._id,
+        eventCode: event.code,
+        type: 'ARRIVED',
+        title: `Collection Crew Arrived: ${event.code}`,
+        message: `Municipal collection crew is now on-site in ${
+          event.addressText || 'your sector'
+        }. Physical collection in progress.`,
+        severity: 'NORMAL',
+        dedupKey: `cit_arr_${route._id}_${event._id}_${rep._id}`,
+      });
+    }
+  }
+
+  return {
+    ok: true,
+    route,
+    stop,
+  };
+}
+
+/**
+ * Confirms collection at stop with after-photo, runs AI vision check, updates impact credits & advances route
+ */
+export async function confirmStopCollection(routeId, eventId, data, userId) {
+  const route = await Route.findById(routeId);
+  if (!route) {
+    const err = new Error('Route not found.');
+    err.status = 404;
+    err.code = 'NOT_FOUND';
+    throw err;
+  }
+
+  const stopIndex = route.stops.findIndex((s) => s.eventId.toString() === eventId.toString());
+  if (stopIndex === -1) {
+    const err = new Error('Stop not found in this route.');
+    err.status = 404;
+    err.code = 'STOP_NOT_FOUND';
+    throw err;
+  }
+
+  const stop = route.stops[stopIndex];
+  if (stop.state === 'DONE') {
+    const err = new Error('This stop collection has already been confirmed.');
+    err.status = 409;
+    err.code = 'ALREADY_COMPLETED';
+    throw err;
+  }
+
+  // Call the core event resolution service to verify photo evidence, award impact credits, and update records
+  const resolveResult = await resolveOperatorEvent(eventId, { ...data, to: 'RESOLVED' }, userId);
+
+  // Update stop record with evidence and AI review
+  stop.state = 'DONE';
+  stop.completedAt = new Date();
+  stop.completedBy = userId;
+  stop.completionPhotoUrl = resolveResult.event.closurePhotoUrl;
+  stop.completionPublicId = resolveResult.event.closurePublicId;
+  stop.operatorNote = data.note || '';
+
+  if (data.aiReview) {
+    stop.aiReview = {
+      assessment: data.aiReview.assessment,
+      confidence: data.aiReview.confidence,
+      shortReason: data.aiReview.shortReason,
+      provider: data.aiReview.provider || 'gemini',
+    };
+  }
+
+  // Advance next stop to EN_ROUTE if pending
+  const nextStop = route.stops.find((s) => s.state === 'PENDING');
+  if (nextStop) {
+    nextStop.state = 'EN_ROUTE';
+  }
+
+  // Check if all stops are done/skipped
+  const remainingStops = route.stops.filter((s) => s.state !== 'DONE' && s.state !== 'SKIPPED');
+  if (remainingStops.length === 0) {
+    route.status = 'COMPLETED';
+  } else {
+    route.status = 'IN_PROGRESS';
+  }
+
+  await route.save();
+
+  // Create persistent citizen notification for verified collection
+  const event = resolveResult.event;
+  const reports = await Report.find({ complaintId: event._id }).lean();
+  for (const rep of reports) {
+    await createCitizenNotification({
+      recipientUserId: rep.citizenId,
+      reportId: rep._id,
+      eventId: event._id,
+      eventCode: event.code,
+      type: 'COLLECTED',
+      title: `Collection Confirmed: ${event.code}`,
+      message: `Waste collection confirmed by operator inspection with photographic evidence. Resolution impact credits credited to your ledger!`,
+      severity: 'NORMAL',
+      dedupKey: `cit_col_${event._id}_${rep._id}`,
+    });
+  }
+
+  return {
+    ok: true,
+    route,
+    stop,
+    event: resolveResult.event,
+  };
+}
+
+/**
+ * Uses configured vision provider to review before vs after collection photos
+ */
+export async function reviewStopEvidence(eventId, fileBuffer, mimeType = 'image/jpeg') {
+  const event = await WasteEvent.findById(eventId).lean();
+  if (!event) {
+    const err = new Error('Waste event not found.');
+    err.status = 404;
+    err.code = 'NOT_FOUND';
+    throw err;
+  }
+
+  const primaryReport = await Report.findById(event.primaryReportId).lean();
+  if (!primaryReport || !primaryReport.imageUrl) {
+    return {
+      status: 'UNAVAILABLE',
+      assessment: 'UNABLE_TO_ASSESS',
+      confidence: null,
+      shortReason: 'No original report photograph available for comparison.',
+      provider: 'none',
+    };
+  }
+
+  return await compareCollectionEvidence(
+    primaryReport.imageUrl,
+    'image/jpeg',
+    fileBuffer,
+    mimeType
+  );
 }

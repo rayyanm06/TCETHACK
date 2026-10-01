@@ -55,8 +55,15 @@ export const OpsShell: React.FC = () => {
     zoom?: number;
   } | null>(null);
 
-  // Active route & congestion layers
+  // Active route, live telemetry & congestion layers
   const [activeRoute, setActiveRoute] = useState<RouteData | null>(null);
+  const [liveTelemetry, setLiveTelemetry] = useState<{
+    lat: number;
+    lng: number;
+    heading: number;
+    accuracyM: number;
+    isLive: boolean;
+  } | null>(null);
   const [congestionZones, setCongestionZones] = useState<CongestionZone[]>([]);
 
   // Forecast state
@@ -240,16 +247,32 @@ export const OpsShell: React.FC = () => {
           route={activeRoute}
           completedGeometry={simulation.completedGeometry}
           remainingGeometry={simulation.remainingGeometry}
-          completedStopIds={simulation.completedStopIds}
-          truckPosition={simulation.truckPosition}
-          truckHeading={simulation.truckHeading}
-          isTruckMoving={simulation.isPlaying}
+          completedStopIds={
+            new Set<string>([
+              ...(activeRoute?.stops?.filter((s) => s.state === 'DONE').map((s) => s.eventId) || []),
+              ...Array.from(simulation.completedStopIds),
+            ])
+          }
+          truckPosition={
+            liveTelemetry?.isLive
+              ? [liveTelemetry.lat, liveTelemetry.lng]
+              : simulation.truckPosition
+          }
+          truckHeading={
+            liveTelemetry?.isLive ? liveTelemetry.heading : simulation.truckHeading
+          }
+          isTruckMoving={liveTelemetry?.isLive ? true : simulation.isPlaying}
           onSelectTruck={() => {
-            setFocusLocation({
-              lat: simulation.truckPosition[0],
-              lng: simulation.truckPosition[1],
-              zoom: 16,
-            });
+            const pos = liveTelemetry?.isLive
+              ? [liveTelemetry.lat, liveTelemetry.lng]
+              : simulation.truckPosition;
+            if (pos) {
+              setFocusLocation({
+                lat: pos[0],
+                lng: pos[1],
+                zoom: 16,
+              });
+            }
           }}
           congestionZones={congestionZones}
           focusLocation={focusLocation}
@@ -265,12 +288,22 @@ export const OpsShell: React.FC = () => {
             route={activeRoute}
             events={events}
             simulation={simulation}
+            onRouteUpdated={(updated) => {
+              setActiveRoute(updated);
+              fetchEventsData();
+            }}
+            onLiveTelemetry={setLiveTelemetry}
             onFocusTruck={() => {
-              setFocusLocation({
-                lat: simulation.truckPosition[0],
-                lng: simulation.truckPosition[1],
-                zoom: 16,
-              });
+              const pos = liveTelemetry?.isLive
+                ? [liveTelemetry.lat, liveTelemetry.lng]
+                : simulation.truckPosition;
+              if (pos) {
+                setFocusLocation({
+                  lat: pos[0],
+                  lng: pos[1],
+                  zoom: 16,
+                });
+              }
             }}
             onFocusStop={(eventId) => {
               setSelectedEventId(eventId);
