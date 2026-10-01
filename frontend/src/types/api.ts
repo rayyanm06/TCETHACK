@@ -94,8 +94,56 @@ export interface WasteEventSummary {
   reopenReason?: string;
 }
 
+export interface HotspotBlock {
+  id: string;
+  code: string;
+  name: string;
+  area: string;
+  description: string;
+  center: GeoLocation;
+  polygon: [number, number][];
+  eventCount: number;
+  priorityTier: PriorityTier;
+  estimatedLoadKg: number;
+  criticalCount: number;
+  status: string;
+  eventIds: string[];
+}
+
+export type NotificationType =
+  | 'HIGH_PRIORITY'
+  | 'NEW_VERIFIED'
+  | 'CAPACITY_EXCEEDED'
+  | 'ROUTE_CHANGE'
+  | 'OVERDUE'
+  | 'RESOLUTION'
+  | 'SYSTEM';
+
+export type NotificationSeverity = 'CRITICAL' | 'HIGH' | 'NORMAL' | 'LOW';
+
+export interface OperatorNotification {
+  id: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  severity: NotificationSeverity;
+  eventId?: string | null;
+  eventCode?: string;
+  locationText?: string;
+  coordinates?: GeoLocation;
+  isRead: boolean;
+  createdAt: string;
+}
+
+export interface NotificationsResponse {
+  items: OperatorNotification[];
+  unreadCount: number;
+  criticalCount: number;
+}
+
 export interface OperatorEventsResponse {
   items: WasteEventSummary[];
+  blocks?: HotspotBlock[];
   counts: {
     reports: number;
     events: number;

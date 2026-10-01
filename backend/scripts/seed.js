@@ -9,6 +9,7 @@ import { StatusEvent } from '../src/models/StatusEvent.js';
 import { ImpactTransaction } from '../src/models/ImpactTransaction.js';
 import { HistoryIncident } from '../src/models/HistoryIncident.js';
 import { Route } from '../src/models/Route.js';
+import { Notification } from '../src/models/Notification.js';
 import { computePriority } from '../src/engines/priority.js';
 import { generateSyntheticHistory } from '../seed/history.generator.js';
 import {
@@ -19,6 +20,7 @@ import {
   SEED_RESOLVED_EVENTS,
   SEED_PHOTOS,
 } from '../seed/demo.data.js';
+import { syncOperatorNotifications } from '../src/services/notificationService.js';
 
 export async function runSeed(isReset = false) {
   console.log('[Seed] Starting database seeding process...');
@@ -35,6 +37,7 @@ export async function runSeed(isReset = false) {
     ImpactTransaction.deleteMany({}),
     HistoryIncident.deleteMany({}),
     Route.deleteMany({}),
+    Notification.deleteMany({}),
   ]);
 
   // 1. Seed Users
@@ -54,7 +57,27 @@ export async function runSeed(isReset = false) {
     usersByEmail.set(u.email, user);
   }
 
-  const operator = usersByEmail.get('operator@civicclean.demo');
+  // Ensure designated hackathon operator account exists
+  const designatedOperatorEmail = (
+    process.env.OPERATOR_EMAIL || 'civicclean.operator@gmail.com'
+  ).toLowerCase().trim();
+  let designatedOp = await User.findOne({ email: designatedOperatorEmail });
+  if (!designatedOp) {
+    const salt = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash('operator123', salt);
+    designatedOp = await User.create({
+      name: 'Municipal Operator',
+      email: designatedOperatorEmail,
+      passwordHash,
+      role: 'OPERATOR',
+      firebaseUid: 'BwzGRgsvc7S2ZZr8TtXG182J82u2',
+      neighbourhoodLabel: 'Central Municipal Operations HQ',
+      isSeed: true,
+    });
+  }
+  usersByEmail.set(designatedOperatorEmail, designatedOp);
+
+  const operator = usersByEmail.get('operator@civicclean.demo') || designatedOp;
   const asha = usersByEmail.get('asha@civicclean.demo');
   const ravi = usersByEmail.get('ravi@civicclean.demo');
   const vikram = usersByEmail.get('vikram@civicclean.demo');
@@ -410,6 +433,10 @@ export async function runSeed(isReset = false) {
   console.log('[Seed] Generating ~120 historical incidents across 12 weeks for hotspot analytics...');
   const syntheticHistory = generateSyntheticHistory(DEPOT_COORDS);
   await HistoryIncident.insertMany(syntheticHistory);
+
+  // Pre-sync operator notifications for seeded high-priority events
+  console.log('[Seed] Synchronizing operator alerts and notifications...');
+  await syncOperatorNotifications();
 
   // Summary counts verification
   const totalUsers = await User.countDocuments();

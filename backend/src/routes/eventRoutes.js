@@ -9,6 +9,7 @@ import {
   resolveOperatorEvent,
   reviewSupportingReport,
   uploadClosurePhoto,
+  getHotspotBlocksOverview,
 } from '../services/eventService.js';
 
 const upload = multer({
@@ -18,6 +19,15 @@ const upload = multer({
 
 const router = express.Router();
 const operatorAuth = [authenticate, requireRole(['OPERATOR'])];
+
+router.get('/hotspots/blocks', authenticate, async (req, res, next) => {
+  try {
+    const result = await getHotspotBlocksOverview();
+    return res.status(200).json(result);
+  } catch (err) {
+    next(err);
+  }
+});
 
 router.get('/complaints', authenticate, async (req, res, next) => {
   try {

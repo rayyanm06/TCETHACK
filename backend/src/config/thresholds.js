@@ -7,7 +7,7 @@ export const THRESHOLDS = {
   DUP_RADIUS_M: Number(process.env.DUP_RADIUS_M) || 100,
   DUP_WINDOW_DAYS: Number(process.env.DUP_WINDOW_DAYS) || 7,
   DUP_LOOSE_CATEGORY: process.env.DUP_LOOSE_CATEGORY !== 'false',
-  SERVICE_AREA_BBOX: [72.75, 18.85, 73.05, 19.35], // [minLng, minLat, maxLng, maxLat] covering Greater Mumbai
+  SERVICE_AREA_BBOX: [72.75, 18.85, 73.25, 19.38], // [minLng, minLat, maxLng, maxLat] covering Greater Mumbai, Mira-Bhayandar, and Kalyan
   DEPOT_COORDINATES: {
     lat: 19.2071,
     lng: 72.8760,

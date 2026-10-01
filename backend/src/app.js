@@ -15,6 +15,7 @@ import { routeRoutes } from './routes/routeRoutes.js';
 import { analyticsRoutes } from './routes/analyticsRoutes.js';
 import { impactRoutes } from './routes/impactRoutes.js';
 import { adminRoutes } from './routes/adminRoutes.js';
+import { notificationRoutes } from './routes/notificationRoutes.js';
 
 export const app = express();
 
@@ -81,6 +82,7 @@ app.use('/api', routeRoutes);
 app.use('/api', analyticsRoutes);
 app.use('/api', impactRoutes);
 app.use('/api', adminRoutes);
+app.use('/api', notificationRoutes);
 
 // 404 Handler
 app.use((req, res) => {

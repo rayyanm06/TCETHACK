@@ -9,6 +9,7 @@ import { uploadImage } from '../adapters/storage/index.js';
 import { signUploadToken, verifyUploadToken } from '../utils/token.js';
 import { withTransaction } from '../utils/transaction.js';
 import { CREDIT_VALUES, TRANSACTION_STATUSES, TRANSACTION_TYPES } from '../engines/impact.js';
+import { computeHotspotBlocks } from '../data/hotspotBlocks.js';
 
 function validateImageBuffer(buffer) {
   if (!buffer || buffer.length < 12) return false;
@@ -151,8 +152,15 @@ export async function getOperatorEvents(query = {}) {
     ],
   });
 
+  const allActiveForBlocks = await WasteEvent.find({
+    status: { $in: ['SUBMITTED', 'VERIFIED', 'SCHEDULED'] },
+    reportType: { $ne: 'HOUSEHOLD' },
+  }).lean();
+  const blocks = computeHotspotBlocks(allActiveForBlocks);
+
   return {
     items,
+    blocks,
     counts: {
       reports: totalReports,
       events: totalEvents,
@@ -160,6 +168,14 @@ export async function getOperatorEvents(query = {}) {
       pendingSpecialist,
     },
   };
+}
+
+export async function getHotspotBlocksOverview() {
+  const allActiveForBlocks = await WasteEvent.find({
+    status: { $in: ['SUBMITTED', 'VERIFIED', 'SCHEDULED'] },
+    reportType: { $ne: 'HOUSEHOLD' },
+  }).lean();
+  return { blocks: computeHotspotBlocks(allActiveForBlocks) };
 }
 
 export async function getOperatorEventById(eventId) {
