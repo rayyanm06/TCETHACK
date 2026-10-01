@@ -86,27 +86,19 @@ export function createStopTransitIcon(seq: number, isDone = false) {
  * - Moving DIAGONALS: smoothly pitched along road direction without upside-down inversion.
  */
 export function getTruckTransformStyle(compassHeading: number): string {
-  // Screen angle relative to East (positive X):
-  // 0° = East, +90° = South, -90° = North, ±180° = West
-  let screenAngle = ((compassHeading - 90) % 360 + 360) % 360;
+  // Compass heading: 0° = North, 90° = East, 180° = South, 270° = West.
+  // The truck illustration faces East by default. Rotate so that heading aligns.
+  const normalized = ((compassHeading % 360) + 360) % 360;
+  let screenAngle = normalized - 90; // East => 0°, South => 90°, West => 180°, North => -90°
+  // Normalize angle to -180..180
   if (screenAngle > 180) screenAngle -= 360;
-
-  const isWestbound = Math.abs(screenAngle) > 90;
-
-  if (isWestbound) {
-    // When mirrored with scaleX(-1), the unrotated truck points West (180° / -180°).
-    // Tilt pitch relative to horizontal West:
-    // screenAngle = 180° (West) -> tilt = 0°
-    // screenAngle = 135° (Southwest) -> tilt = +45° (points down-left)
-    // screenAngle = -135° (Northwest) -> tilt = -45° (points up-left)
-    // screenAngle = 90° (South) -> tilt = +90° (points straight down)
-    // screenAngle = -90° (North) -> tilt = -90° (points straight up)
-    const tilt = screenAngle > 0 ? 180 - screenAngle : -180 - screenAngle;
-    return `scaleX(-1) rotate(${Math.round(tilt)}deg)`;
-  } else {
-    // Eastbound: truck faces right naturally; rotate directly to match travel angle
-    return `rotate(${Math.round(screenAngle)}deg)`;
+  if (screenAngle < -180) screenAngle += 360;
+  // Westward direction (≈180°) should flip horizontally to keep wheels on road
+  if (Math.abs(Math.abs(screenAngle) - 180) < 5) {
+    return 'scaleX(-1) rotate(0deg)';
   }
+  // Other headings: rotate accordingly
+  return `rotate(${Math.round(screenAngle)}deg)`;
 }
 
 /**

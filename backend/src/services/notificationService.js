@@ -7,9 +7,10 @@ import { Route } from '../models/Route.js';
  */
 export async function syncOperatorNotifications() {
   try {
-    // 1. Check Active Events for Critical & High Priority Alerts
+    // 1. Check Active Events for Critical & High Priority Alerts (strictly excluding seed data)
     const activeEvents = await WasteEvent.find({
       status: { $in: ['SUBMITTED', 'VERIFIED', 'SCHEDULED'] },
+      isSeed: { $ne: true },
     }).lean();
 
     for (const ev of activeEvents) {
@@ -43,6 +44,7 @@ export async function syncOperatorNotifications() {
               lng: ev.location.coordinates[0],
             },
             isRead: false,
+            isSeed: false,
             dedupKey,
           });
         }
@@ -67,6 +69,7 @@ export async function syncOperatorNotifications() {
               lng: ev.location.coordinates[0],
             },
             isRead: false,
+            isSeed: false,
             dedupKey,
           });
         }
@@ -91,14 +94,15 @@ export async function syncOperatorNotifications() {
               lng: ev.location.coordinates[0],
             },
             isRead: false,
+            isSeed: false,
             dedupKey,
           });
         }
       }
     }
 
-    // 2. Check Recently Resolved Events
-    const recentResolved = await WasteEvent.find({ status: 'RESOLVED' })
+    // 2. Check Recently Resolved Events (strictly excluding seed data)
+    const recentResolved = await WasteEvent.find({ status: 'RESOLVED', isSeed: { $ne: true } })
       .sort({ resolvedAt: -1 })
       .limit(10)
       .lean();
@@ -120,13 +124,14 @@ export async function syncOperatorNotifications() {
             lng: resEv.location.coordinates[0],
           },
           isRead: false,
+          isSeed: false,
           dedupKey,
         });
       }
     }
 
-    // 3. Check Routes for Capacity & Replanning Events
-    const routes = await Route.find().sort({ updatedAt: -1 }).limit(10).lean();
+    // 3. Check Routes for Capacity & Replanning Events (strictly excluding seed data)
+    const routes = await Route.find({ isSeed: { $ne: true } }).sort({ updatedAt: -1 }).limit(10).lean();
     for (const r of routes) {
       // Capacity issues
       if (r.deferred && r.deferred.length > 0) {
@@ -136,6 +141,7 @@ export async function syncOperatorNotifications() {
             const existing = await Notification.findOne({ dedupKey });
             if (!existing) {
               const ev = await WasteEvent.findById(def.eventId).lean();
+              if (!ev || ev.isSeed) continue;
               await Notification.create({
                 recipientRole: 'OPERATOR',
                 type: 'CAPACITY_EXCEEDED',
@@ -149,6 +155,7 @@ export async function syncOperatorNotifications() {
                   ? { lat: ev.location.coordinates[1], lng: ev.location.coordinates[0] }
                   : undefined,
                 isRead: false,
+                isSeed: false,
                 dedupKey,
               });
             }
@@ -248,11 +255,12 @@ export async function createOperatorNotification({
 }
 
 /**
- * Returns citizen notifications for a specific user
+ * Returns citizen notifications for a specific user (strictly excluding seed data)
  */
 export async function getCitizenNotifications(userId) {
   const query = {
     $or: [{ recipientUserId: userId }, { recipientRole: 'CITIZEN', recipientUserId: userId }],
+    isSeed: { $ne: true },
   };
 
   const items = await Notification.find(query).sort({ createdAt: -1 }).limit(50).lean();
@@ -282,12 +290,12 @@ export async function getCitizenNotifications(userId) {
 }
 
 /**
- * Returns operator notifications with counts
+ * Returns operator notifications with counts (strictly excluding seed data)
  */
 export async function getOperatorNotifications(filter = 'ALL') {
   await syncOperatorNotifications();
 
-  const query = { recipientRole: 'OPERATOR' };
+  const query = { recipientRole: 'OPERATOR', isSeed: { $ne: true } };
   if (filter === 'HIGH_PRIORITY') {
     query.severity = { $in: ['CRITICAL', 'HIGH'] };
   } else if (filter === 'ROUTE') {
@@ -299,11 +307,12 @@ export async function getOperatorNotifications(filter = 'ALL') {
   }
 
   const items = await Notification.find(query).sort({ createdAt: -1 }).limit(50).lean();
-  const unreadCount = await Notification.countDocuments({ recipientRole: 'OPERATOR', isRead: false });
+  const unreadCount = await Notification.countDocuments({ recipientRole: 'OPERATOR', isRead: false, isSeed: { $ne: true } });
   const criticalCount = await Notification.countDocuments({
     recipientRole: 'OPERATOR',
     isRead: false,
     severity: 'CRITICAL',
+    isSeed: { $ne: true },
   });
 
   return {

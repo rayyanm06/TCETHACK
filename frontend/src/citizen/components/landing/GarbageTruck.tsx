@@ -221,3 +221,149 @@ export const GarbageTruck: React.FC<GarbageTruckProps> = ({ phase, className = '
     </div>
   );
 };
+
+export interface GarbageTruckRearProps {
+  className?: string;
+  isDriving?: boolean;
+}
+
+export const GarbageTruckRear: React.FC<GarbageTruckRearProps> = ({ className = '', isDriving = true }) => {
+  return (
+    <div className={`relative select-none pointer-events-none ${className}`}>
+      <svg
+        viewBox="0 0 280 240"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        className="w-full h-full drop-shadow-lg"
+      >
+        <defs>
+          <linearGradient id="rearCompactorGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#1C5340" />
+            <stop offset="100%" stopColor="#164635" />
+          </linearGradient>
+          <linearGradient id="rearHopperGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#192A23" />
+            <stop offset="100%" stopColor="#12201A" />
+          </linearGradient>
+          <linearGradient id="cabRoofGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#2A7C5C" />
+            <stop offset="100%" stopColor="#1E5C44" />
+          </linearGradient>
+        </defs>
+
+        {/* --- GROUND SHADOW --- */}
+        <ellipse cx="140" cy="222" rx="110" ry="12" fill="#17211D" fillOpacity="0.28" />
+
+        {/* --- DUAL TIRES (LEFT & RIGHT) --- */}
+        {/* Left inner & outer tires */}
+        <rect x="36" y="152" width="22" height="58" rx="6" fill="#17211D" />
+        <rect x="60" y="156" width="18" height="54" rx="5" fill="#1F2A25" />
+        {/* Left mudflap */}
+        <rect x="32" y="160" width="48" height="32" rx="2" fill="#131C18" />
+        <rect x="36" y="188" width="40" height="4" fill="#FFFFFF" opacity="0.4" />
+
+        {/* Right inner & outer tires */}
+        <rect x="202" y="156" width="18" height="54" rx="5" fill="#1F2A25" />
+        <rect x="222" y="152" width="22" height="58" rx="6" fill="#17211D" />
+        {/* Right mudflap */}
+        <rect x="200" y="160" width="48" height="32" rx="2" fill="#131C18" />
+        <rect x="204" y="188" width="40" height="4" fill="#FFFFFF" opacity="0.4" />
+
+        {/* --- HEAVY CHASSIS CROSSMEMBER & UNDER-RIDE GUARD --- */}
+        <rect x="44" y="194" width="192" height="14" rx="3" fill="#17211D" />
+        <rect x="52" y="196" width="176" height="10" rx="2" fill="#3D4B45" />
+
+        {/* Rear Red Reflectors on Bumper */}
+        <rect x="56" y="197" width="16" height="8" rx="1.5" fill="#E04848" />
+        <rect x="208" y="197" width="16" height="8" rx="1.5" fill="#E04848" />
+
+        {/* License Plate */}
+        <rect x="114" y="195" width="52" height="14" rx="2" fill="#FBF9F4" stroke="#17211D" strokeWidth="1" />
+        <text
+          x="140"
+          y="205"
+          fill="#17211D"
+          fontFamily="system-ui, -apple-system, monospace"
+          fontSize="8"
+          fontWeight="900"
+          textAnchor="middle"
+          letterSpacing="1"
+        >
+          MH-02 CC
+        </text>
+
+        {/* --- FRONT CABIN ROOF (PEEKING OVER COMPACTOR BODY) --- */}
+        <path d="M 75 42 L 205 42 L 215 56 L 65 56 Z" fill="url(#cabRoofGrad)" stroke="#164635" strokeWidth="1.5" />
+        {/* Amber Flashing Beacon on Cab Center */}
+        <g className="animate-pulse">
+          <rect x="131" y="24" width="18" height="14" rx="3" fill="#D59A3A" stroke="#17211D" strokeWidth="1.5" />
+          <circle cx="140" cy="31" r="16" fill="#D59A3A" fillOpacity="0.3" />
+        </g>
+        {/* Cab marker clearance lights */}
+        <circle cx="82" cy="46" r="3" fill="#D59A3A" />
+        <circle cx="198" cy="46" r="3" fill="#D59A3A" />
+
+        {/* --- MAIN COMPACTOR CONTAINER BODY --- */}
+        <rect x="50" y="52" width="180" height="140" rx="8" fill="url(#rearCompactorGrad)" stroke="#164635" strokeWidth="3" />
+
+        {/* Upper Brand Plate */}
+        <rect x="62" y="60" width="156" height="24" rx="3" fill="#FBF9F4" />
+        <text
+          x="140"
+          y="76"
+          fill="#164635"
+          fontFamily="system-ui, -apple-system, sans-serif"
+          fontSize="11"
+          fontWeight="800"
+          textAnchor="middle"
+          letterSpacing="3"
+        >
+          CIVICCLEAN · 04
+        </text>
+        <circle cx="70" cy="72" r="3" fill="#236B4F" />
+        <circle cx="210" cy="72" r="3" fill="#236B4F" />
+
+        {/* Structural Ribs */}
+        <line x1="52" y1="92" x2="228" y2="92" stroke="#113629" strokeWidth="4" />
+        <line x1="52" y1="104" x2="228" y2="104" stroke="#113629" strokeWidth="3" />
+
+        {/* --- HOPPER INTAKE & COMPACTOR TAILGATE --- */}
+        <rect x="64" y="112" width="152" height="66" rx="5" fill="url(#rearHopperGrad)" stroke="#17211D" strokeWidth="2" />
+        
+        {/* Compactor Blade / Chute Opening */}
+        <rect x="74" y="122" width="132" height="46" rx="3" fill="#0E1714" stroke="#17211D" strokeWidth="1.5" />
+        <line x1="74" y1="140" x2="206" y2="140" stroke="#17211D" strokeWidth="2" />
+        
+        {/* Hydraulic Pistons (Left & Right) */}
+        <line x1="60" y1="116" x2="60" y2="168" stroke="#D59A3A" strokeWidth="4.5" strokeLinecap="round" />
+        <line x1="60" y1="126" x2="60" y2="152" stroke="#53615B" strokeWidth="3" />
+        <line x1="220" y1="116" x2="220" y2="168" stroke="#D59A3A" strokeWidth="4.5" strokeLinecap="round" />
+        <line x1="220" y1="126" x2="220" y2="152" stroke="#53615B" strokeWidth="3" />
+
+        {/* Tailgate Hazard Chevrons Strip */}
+        <g opacity="0.95">
+          <rect x="64" y="178" width="152" height="12" fill="#D59A3A" />
+          <path d="M 72 178 L 80 190 H 88 L 80 178 Z" fill="#17211D" />
+          <path d="M 96 178 L 104 190 H 112 L 104 178 Z" fill="#17211D" />
+          <path d="M 120 178 L 128 190 H 136 L 128 178 Z" fill="#17211D" />
+          <path d="M 144 178 L 152 190 H 160 L 152 178 Z" fill="#17211D" />
+          <path d="M 168 178 L 176 190 H 184 L 176 178 Z" fill="#17211D" />
+          <path d="M 192 178 L 200 190 H 208 L 200 178 Z" fill="#17211D" />
+        </g>
+
+        {/* --- VERTICAL TAIL LIGHT CLUSTERS --- */}
+        {/* Left Cluster */}
+        <rect x="52" y="132" width="10" height="34" rx="2" fill="#17211D" />
+        <circle cx="57" cy="138" r="3.5" fill="#E04848" className={isDriving ? 'animate-pulse' : ''} />
+        <circle cx="57" cy="149" r="3" fill="#D59A3A" />
+        <circle cx="57" cy="160" r="3" fill="#FFFFFF" opacity="0.8" />
+
+        {/* Right Cluster */}
+        <rect x="218" y="132" width="10" height="34" rx="2" fill="#17211D" />
+        <circle cx="223" cy="138" r="3.5" fill="#E04848" className={isDriving ? 'animate-pulse' : ''} />
+        <circle cx="223" cy="149" r="3" fill="#D59A3A" />
+        <circle cx="223" cy="160" r="3" fill="#FFFFFF" opacity="0.8" />
+      </svg>
+    </div>
+  );
+};

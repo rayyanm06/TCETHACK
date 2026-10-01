@@ -73,6 +73,7 @@ export async function previewRoute(
     category: { $ne: 'E_WASTE' },
     specialistFlag: { $ne: true },
     specialistQueue: 'NONE',
+    isSeed: { $ne: true },
     $or: [{ assignedRouteId: null }, { assignedRouteId: { $exists: false } }],
   }).lean();
 
@@ -455,7 +456,7 @@ export async function replanRoute(routeId, { congestionZones = [], reason = 'Sim
 }
 
 export async function getActiveRoutes() {
-  const routes = await Route.find({ status: { $in: ['DRAFT', 'ASSIGNED', 'IN_PROGRESS'] } })
+  const routes = await Route.find({ status: { $in: ['DRAFT', 'ASSIGNED', 'IN_PROGRESS'] }, isSeed: { $ne: true } })
     .populate('vehicleId')
     .sort({ updatedAt: -1 })
     .lean();
@@ -663,7 +664,7 @@ export async function recordStopArrival(
  * Confirms collection at stop with after-photo, runs AI vision check, updates impact credits & advances route
  */
 export async function confirmStopCollection(routeId, eventId, data, userId) {
-  const route = await Route.findById(routeId);
+  const route = await Route.findById(routeId).lean();
   if (!route) {
     const err = new Error('Route not found.');
     err.status = 404;
@@ -687,63 +688,21 @@ export async function confirmStopCollection(routeId, eventId, data, userId) {
     throw err;
   }
 
-  // Call the core event resolution service to verify photo evidence, award impact credits, and update records
-  const resolveResult = await resolveOperatorEvent(eventId, { ...data, to: 'RESOLVED' }, userId);
+  // Never trust client-supplied data.aiReview - sanitize incoming payload
+  const { aiReview: _ignoredClientReview, ...sanitizedData } = data || {};
 
-  // Update stop record with evidence and AI review
-  stop.state = 'DONE';
-  stop.completedAt = new Date();
-  stop.completedBy = userId;
-  stop.completionPhotoUrl = resolveResult.event.closurePhotoUrl;
-  stop.completionPublicId = resolveResult.event.closurePublicId;
-  stop.operatorNote = data.note || '';
+  // Call the core event resolution service to verify photo evidence, award impact credits,
+  // compute server-side AI assessment, and atomically update route stop in transaction
+  const resolveResult = await resolveOperatorEvent(eventId, { ...sanitizedData, to: 'RESOLVED' }, userId);
 
-  if (data.aiReview) {
-    stop.aiReview = {
-      assessment: data.aiReview.assessment,
-      confidence: data.aiReview.confidence,
-      shortReason: data.aiReview.shortReason,
-      provider: data.aiReview.provider || 'gemini',
-    };
-  }
-
-  // Advance next stop to EN_ROUTE if pending
-  const nextStop = route.stops.find((s) => s.state === 'PENDING');
-  if (nextStop) {
-    nextStop.state = 'EN_ROUTE';
-  }
-
-  // Check if all stops are done/skipped
-  const remainingStops = route.stops.filter((s) => s.state !== 'DONE' && s.state !== 'SKIPPED');
-  if (remainingStops.length === 0) {
-    route.status = 'COMPLETED';
-  } else {
-    route.status = 'IN_PROGRESS';
-  }
-
-  await route.save();
-
-  // Create persistent citizen notification for verified collection
-  const event = resolveResult.event;
-  const reports = await Report.find({ complaintId: event._id }).lean();
-  for (const rep of reports) {
-    await createCitizenNotification({
-      recipientUserId: rep.citizenId,
-      reportId: rep._id,
-      eventId: event._id,
-      eventCode: event.code,
-      type: 'COLLECTED',
-      title: `Collection Confirmed: ${event.code}`,
-      message: `Waste collection confirmed by operator inspection with photographic evidence. Resolution impact credits credited to your ledger!`,
-      severity: 'NORMAL',
-      dedupKey: `cit_col_${event._id}_${rep._id}`,
-    });
-  }
+  // Re-fetch the freshly updated route persisted inside the transaction
+  const updatedRoute = await Route.findById(routeId).lean();
+  const updatedStop = updatedRoute?.stops?.find((s) => s.eventId.toString() === eventId.toString()) || null;
 
   return {
     ok: true,
-    route,
-    stop,
+    route: updatedRoute,
+    stop: updatedStop,
     event: resolveResult.event,
   };
 }

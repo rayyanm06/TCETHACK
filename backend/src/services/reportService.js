@@ -243,8 +243,18 @@ export async function createPrimaryReport(data, userId) {
 
   return await withTransaction(async (session) => {
     // 6. Generate next sequential event code (WE-XXXX)
-    const count = await WasteEvent.countDocuments();
-    const code = `WE-${String(count + 1).padStart(4, '0')}`;
+    const latestEvent = await WasteEvent.findOne({}, { code: 1 }).sort({ createdAt: -1 }).session(session).lean();
+    let nextNum = 1;
+    if (latestEvent?.code && latestEvent.code.startsWith('WE-')) {
+      const parsed = parseInt(latestEvent.code.replace('WE-', ''), 10);
+      if (!isNaN(parsed)) {
+        nextNum = parsed + 1;
+      }
+    }
+    while (await WasteEvent.exists({ code: `WE-${String(nextNum).padStart(4, '0')}` }).session(session)) {
+      nextNum++;
+    }
+    const code = `WE-${String(nextNum).padStart(4, '0')}`;
 
     // 7. Create WasteEvent
     const [event] = await WasteEvent.create(

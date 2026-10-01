@@ -34,6 +34,7 @@ interface ActiveRoutePanelProps {
   onFocusTruck: () => void;
   onFocusStop: (eventId: string) => void;
   onRouteUpdated?: (updatedRoute: RouteData) => void;
+  onModeChange?: (mode: 'LIVE' | 'PREVIEW') => void;
   onLiveTelemetry?: (telemetry: {
     lat: number;
     lng: number;
@@ -50,10 +51,16 @@ export const ActiveRoutePanel: React.FC<ActiveRoutePanelProps> = ({
   onFocusTruck,
   onFocusStop,
   onRouteUpdated,
+  onModeChange,
   onLiveTelemetry,
 }) => {
   const [isMinimized, setIsMinimized] = useState(false);
   const [panelMode, setPanelMode] = useState<'LIVE' | 'PREVIEW'>('LIVE');
+
+  const handleSetMode = (mode: 'LIVE' | 'PREVIEW') => {
+    setPanelMode(mode);
+    onModeChange?.(mode);
+  };
 
   // Real GPS tracking state
   const [isGpsActive, setIsGpsActive] = useState(false);
@@ -430,7 +437,7 @@ export const ActiveRoutePanel: React.FC<ActiveRoutePanelProps> = ({
           {/* Mode Switcher Tabs */}
           <div className="flex bg-surface rounded border border-line p-0.5 text-[10px] font-semibold">
             <button
-              onClick={() => setPanelMode('LIVE')}
+              onClick={() => handleSetMode('LIVE')}
               className={`px-2 py-0.5 rounded transition ${
                 panelMode === 'LIVE' ? 'bg-moss text-surface shadow-xs' : 'text-ink-3 hover:text-ink'
               }`}
@@ -438,7 +445,7 @@ export const ActiveRoutePanel: React.FC<ActiveRoutePanelProps> = ({
               Live
             </button>
             <button
-              onClick={() => setPanelMode('PREVIEW')}
+              onClick={() => handleSetMode('PREVIEW')}
               className={`px-2 py-0.5 rounded transition ${
                 panelMode === 'PREVIEW' ? 'bg-lagoon text-surface shadow-xs' : 'text-ink-3 hover:text-ink'
               }`}

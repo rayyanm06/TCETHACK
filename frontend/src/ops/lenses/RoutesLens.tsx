@@ -90,6 +90,13 @@ export const RoutesLens: React.FC<RoutesLensProps> = ({ events, onRouteChanged, 
       setLoading(false);
     }
   };
+  // Auto-refresh preview when events (new citizen reports) change
+  useEffect(() => {
+    // Refresh preview if no active route or draft status
+    if (!route || route.status === 'DRAFT') {
+      handlePreviewRoute();
+    }
+  }, [events]);
 
   const handleAssignRoute = async () => {
     if (!route) return;

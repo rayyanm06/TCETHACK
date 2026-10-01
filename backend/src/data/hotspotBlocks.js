@@ -215,7 +215,11 @@ function isPointInPolygon(point, vs) {
 }
 
 /**
- * Computes active metrics for each hotspot block from the live/seeded waste events
+ * Computes active metrics for each hotspot block from the live/seeded waste events.
+ * Transparently aggregates all reports:
+ * - Predefined blocks with 0 events are shown neutrally ('CLEAR', 'None')
+ * - Any reports outside hardcoded blocks are dynamically aggregated into an 'Other Locations' block,
+ *   ensuring no valid report is ever omitted or hidden from operator lenses.
  */
 export function computeHotspotBlocks(events = []) {
   const priorityWeight = {
@@ -225,18 +229,24 @@ export function computeHotspotBlocks(events = []) {
     Low: 1,
   };
 
-  return MUNICIPAL_HOTSPOT_BLOCKS.map((block) => {
+  const matchedEventIds = new Set();
+
+  const predefinedBlocks = MUNICIPAL_HOTSPOT_BLOCKS.map((block) => {
     // Filter events inside this block's polygon boundary
     const blockEvents = events.filter((ev) => {
       const lat = ev.location?.lat ?? ev.location?.coordinates?.[1] ?? ev.loc?.lat;
       const lng = ev.location?.lng ?? ev.location?.coordinates?.[0] ?? ev.loc?.lng;
       if (lat === undefined || lng === undefined) return false;
-      return isPointInPolygon([lat, lng], block.polygon);
+      const isInside = isPointInPolygon([lat, lng], block.polygon);
+      if (isInside) {
+        matchedEventIds.add((ev._id ? ev._id.toString() : ev.id).toString());
+      }
+      return isInside;
     });
 
     const eventCount = blockEvents.length;
-    let highestPriority = 'Low';
-    let highestPriorityVal = 1;
+    let highestPriority = eventCount > 0 ? 'Low' : 'None';
+    let highestPriorityVal = eventCount > 0 ? 1 : 0;
     let totalWeightKg = 0;
     let criticalCount = 0;
     let scheduledCount = 0;
@@ -257,13 +267,17 @@ export function computeHotspotBlocks(events = []) {
       totalWeightKg += Number(ev.estimatedWeightKg || 0);
     }
 
-    let status = 'NORMAL';
-    if (criticalCount > 0 && highestPriority === 'Critical') {
-      status = 'CRITICAL_TRIAGE';
-    } else if (highestPriority === 'High') {
-      status = 'ACTIVE_MONITORING';
-    } else if (eventCount > 0 && scheduledCount === eventCount) {
-      status = 'SCHEDULED_FOR_PICKUP';
+    let status = 'CLEAR';
+    if (eventCount > 0) {
+      if (criticalCount > 0 && highestPriority === 'Critical') {
+        status = 'CRITICAL_TRIAGE';
+      } else if (highestPriority === 'High') {
+        status = 'ACTIVE_MONITORING';
+      } else if (scheduledCount === eventCount) {
+        status = 'SCHEDULED_FOR_PICKUP';
+      } else {
+        status = 'NORMAL';
+      }
     }
 
     return {
@@ -273,7 +287,104 @@ export function computeHotspotBlocks(events = []) {
       estimatedLoadKg: Math.round(totalWeightKg),
       criticalCount,
       status,
-      eventIds: blockEvents.map((e) => e._id ? e._id.toString() : e.id),
+      eventIds: blockEvents.map((e) => (e._id ? e._id.toString() : e.id).toString()),
     };
   });
+
+  // Collect any events outside all predefined polygons into "Other Locations"
+  const unzonedEvents = events.filter(
+    (ev) => !matchedEventIds.has((ev._id ? ev._id.toString() : ev.id).toString())
+  );
+
+  let otherBlock = null;
+  if (unzonedEvents.length > 0) {
+    let minLat = Infinity,
+      maxLat = -Infinity,
+      minLng = Infinity,
+      maxLng = -Infinity;
+    let totalWeightKg = 0;
+    let highestPriority = 'Low';
+    let highestPriorityVal = 1;
+    let criticalCount = 0;
+    let scheduledCount = 0;
+
+    for (const ev of unzonedEvents) {
+      const lat = ev.location?.lat ?? ev.location?.coordinates?.[1] ?? ev.loc?.lat;
+      const lng = ev.location?.lng ?? ev.location?.coordinates?.[0] ?? ev.loc?.lng;
+      if (lat !== undefined && lng !== undefined) {
+        minLat = Math.min(minLat, lat);
+        maxLat = Math.max(maxLat, lat);
+        minLng = Math.min(minLng, lng);
+        maxLng = Math.max(maxLng, lng);
+      }
+      const tier = ev.priority?.tier || 'Low';
+      const val = priorityWeight[tier] || 1;
+      if (val > highestPriorityVal) {
+        highestPriorityVal = val;
+        highestPriority = tier;
+      }
+      if (tier === 'Critical' || tier === 'High') {
+        criticalCount++;
+      }
+      if (ev.status === 'SCHEDULED' || ev.status === 'RESOLVED') {
+        scheduledCount++;
+      }
+      totalWeightKg += Number(ev.estimatedWeightKg || 0);
+    }
+
+    const pad = 0.006;
+    otherBlock = {
+      id: 'block_other_locations',
+      code: 'OTHER',
+      name: 'Other Locations / Active Reports',
+      area: 'Greater Mumbai',
+      description: 'Verified municipal incidents situated outside predefined ward monitoring polygons.',
+      center: {
+        lat: isFinite(minLat) ? (minLat + maxLat) / 2 : 19.2071,
+        lng: isFinite(minLng) ? (minLng + maxLng) / 2 : 72.876,
+      },
+      polygon: isFinite(minLat)
+        ? [
+            [maxLat + pad, minLng - pad],
+            [maxLat + pad, maxLng + pad],
+            [minLat - pad, maxLng + pad],
+            [minLat - pad, minLng - pad],
+          ]
+        : [
+            [19.212, 72.871],
+            [19.212, 72.881],
+            [19.202, 72.881],
+            [19.202, 72.871],
+          ],
+      eventCount: unzonedEvents.length,
+      priorityTier: highestPriority,
+      estimatedLoadKg: Math.round(totalWeightKg),
+      criticalCount,
+      status: criticalCount > 0 ? 'CRITICAL_TRIAGE' : 'ACTIVE_MONITORING',
+      eventIds: unzonedEvents.map((e) => (e._id ? e._id.toString() : e.id).toString()),
+    };
+  } else {
+    otherBlock = {
+      id: 'block_other_locations',
+      code: 'OTHER',
+      name: 'Other Locations',
+      area: 'Greater Mumbai',
+      description: 'Zero verified reports outside predefined ward monitoring polygons.',
+      center: { lat: 19.2071, lng: 72.876 },
+      polygon: [
+        [19.212, 72.871],
+        [19.212, 72.881],
+        [19.202, 72.881],
+        [19.202, 72.871],
+      ],
+      eventCount: 0,
+      priorityTier: 'None',
+      estimatedLoadKg: 0,
+      criticalCount: 0,
+      status: 'CLEAR',
+      eventIds: [],
+    };
+  }
+
+  return [...predefinedBlocks, otherBlock];
 }

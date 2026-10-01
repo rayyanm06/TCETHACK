@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../lib/auth.tsx';
 import { ShieldCheck, UserCheck, ArrowRight, AlertCircle, KeyRound, UserPlus, Check } from 'lucide-react';
 import { CivicCityScene } from '../components/landing/CivicCityScene.tsx';
-import { GarbageTruck } from '../components/landing/GarbageTruck.tsx';
+import { GarbageTruck, GarbageTruckRear } from '../components/landing/GarbageTruck.tsx';
 import { ReportParcel } from '../components/landing/ReportParcel.tsx';
 
 type TransitionPhase =
@@ -13,6 +13,7 @@ type TransitionPhase =
   | 'transforming'
   | 'truck_entering'
   | 'collecting'
+  | 'turning'
   | 'driving_away'
   | 'revealing_dashboard';
 
@@ -101,7 +102,7 @@ export const Login: React.FC = () => {
         setPhase('transforming');
       }, 350);
 
-      // Stage 3: Garbage collection truck enters from the road (0.85s - 1.50s)
+      // Stage 3: Garbage collection truck enters from the side in profile (0.85s - 1.45s)
       addTimeout(() => {
         setPhase('truck_entering');
       }, 850);
@@ -111,25 +112,30 @@ export const Login: React.FC = () => {
         setPhase('collecting');
       }, 1450);
 
-      // Stage 5: Truck drives forward into the scene with parallax depth (2.05s - 3.10s)
+      // Stage 5: Turn toward the road alignment (2.05s - 2.45s)
       addTimeout(() => {
-        setPhase('driving_away');
+        setPhase('turning');
       }, 2050);
 
-      // Stage 6: Camera zooms into vanishing point & reveals dashboard (2.95s - 3.55s)
+      // Stage 6: Matching rear-view vehicle moves forward along the road towards vanishing point (2.45s - 3.25s)
+      addTimeout(() => {
+        setPhase('driving_away');
+      }, 2450);
+
+      // Stage 7: Camera zooms into vanishing point & reveals dashboard (3.25s - 3.65s)
       addTimeout(() => {
         setPhase('revealing_dashboard');
-      }, 2950);
+      }, 3250);
 
       // Handoff to actual dashboard route
       addTimeout(() => {
         navigate(destination);
-      }, 3450);
+      }, 3650);
 
       // Safety fallback timer to prevent hung UI
       addTimeout(() => {
         navigate(destination);
-      }, 4200);
+      }, 4400);
 
     } catch (err: any) {
       // On authentication failure:
@@ -181,12 +187,11 @@ export const Login: React.FC = () => {
           </div>
         )}
 
-        {/* B. Stylized Municipal Garbage Truck */}
+        {/* B. Side Profile Municipal Garbage Truck (Enters, Collects, Turns) */}
         {(phase === 'transforming' ||
           phase === 'truck_entering' ||
           phase === 'collecting' ||
-          phase === 'driving_away' ||
-          phase === 'revealing_dashboard') && (
+          phase === 'turning') && (
           <div
             className="absolute z-30 pointer-events-none w-[280px] sm:w-[380px] md:w-[460px]"
             style={{
@@ -198,20 +203,18 @@ export const Login: React.FC = () => {
                   ? 'transform 1.1s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.4s ease-out'
                   : phase === 'collecting'
                   ? 'transform 0.4s ease-out'
-                  : phase === 'driving_away' || phase === 'revealing_dashboard'
-                  ? 'transform 1.4s cubic-bezier(0.45, 0, 0.55, 1), opacity 1.4s ease-in'
+                  : phase === 'turning'
+                  ? 'transform 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.45s ease-out'
                   : 'none',
               transform:
                 phase === 'truck_entering'
                   ? 'translate(-65%, 0) scale(1)'
                   : phase === 'collecting'
                   ? 'translate(-65%, -2px) scale(1)'
-                  : phase === 'driving_away'
-                  ? 'translate(30px, -200px) scale(0.24) rotate(5deg)'
-                  : phase === 'revealing_dashboard'
-                  ? 'translate(65px, -290px) scale(0.08) rotate(7deg)'
+                  : phase === 'turning'
+                  ? 'translate(-52%, -16px) scale(0.85) rotate(16deg)'
                   : 'translate(-160%, 0) scale(1)',
-              opacity: phase === 'revealing_dashboard' ? 0.3 : phase === 'transforming' ? 0.8 : 1,
+              opacity: phase === 'turning' ? 0 : 1,
             }}
           >
             <GarbageTruck
@@ -220,13 +223,45 @@ export const Login: React.FC = () => {
                   ? 'entering'
                   : phase === 'collecting'
                   ? 'collecting'
-                  : phase === 'driving_away'
-                  ? 'driving'
-                  : phase === 'revealing_dashboard'
-                  ? 'driving'
                   : 'idle'
               }
             />
+          </div>
+        )}
+
+        {/* C. Rear View Municipal Garbage Truck (Moves forward along the perspective road line into the distance) */}
+        {(phase === 'turning' ||
+          phase === 'driving_away' ||
+          phase === 'revealing_dashboard') && (
+          <div
+            className="absolute z-30 pointer-events-none w-[200px] sm:w-[260px] md:w-[310px]"
+            style={{
+              left: '50%',
+              bottom: '16%',
+              transformOrigin: 'center bottom',
+              transition:
+                phase === 'turning'
+                  ? 'opacity 0.4s ease-in'
+                  : phase === 'driving_away' || phase === 'revealing_dashboard'
+                  ? 'transform 1.4s cubic-bezier(0.4, 0, 0.6, 1), opacity 1.3s ease-in'
+                  : 'none',
+              transform:
+                phase === 'turning'
+                  ? 'translate(-50%, -15px) scale(0.85)'
+                  : phase === 'driving_away'
+                  ? 'translate(-50%, -230px) scale(0.18)'
+                  : phase === 'revealing_dashboard'
+                  ? 'translate(-50%, -300px) scale(0.06)'
+                  : 'translate(-50%, 0) scale(1)',
+              opacity:
+                phase === 'turning'
+                  ? 1
+                  : phase === 'driving_away'
+                  ? 0.85
+                  : 0.1,
+            }}
+          >
+            <GarbageTruckRear isDriving={true} />
           </div>
         )}
       </div>

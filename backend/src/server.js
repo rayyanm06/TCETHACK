@@ -3,6 +3,32 @@ import { connectDB } from './config/db.js';
 import { ENV } from './config/env.js';
 import { User } from './models/User.js';
 import { runSeed } from '../scripts/seed.js';
+import bcrypt from 'bcryptjs';
+
+async function ensureOperatorAccount() {
+  const operatorEmail = (process.env.OPERATOR_EMAIL || 'civicclean.operator@gmail.com').toLowerCase().trim();
+  const operatorPassword = 'password123';
+
+  let operator = await User.findOne({ email: operatorEmail });
+  const salt = await bcrypt.genSalt(10);
+  const passwordHash = await bcrypt.hash(operatorPassword, salt);
+
+  if (operator) {
+    // Always reset the password hash so the fixed credentials work
+    operator.passwordHash = passwordHash;
+    operator.role = 'OPERATOR';
+    await operator.save();
+    console.log(`[Server] Operator account reset: ${operatorEmail}`);
+  } else {
+    await User.create({
+      name: 'Municipal Officer',
+      email: operatorEmail,
+      passwordHash,
+      role: 'OPERATOR',
+    });
+    console.log(`[Server] Operator account created: ${operatorEmail}`);
+  }
+}
 
 async function startServer() {
   try {
@@ -19,6 +45,9 @@ async function startServer() {
       }
     }
 
+    // Ensure operator account exists and has correct credentials
+    await ensureOperatorAccount();
+
     app.listen(ENV.PORT, () => {
       console.log(`==================================================`);
       console.log(`🚀 CivicClean Backend Server running on port ${ENV.PORT}`);
@@ -33,3 +62,4 @@ async function startServer() {
 }
 
 startServer();
+

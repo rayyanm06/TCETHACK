@@ -1,5 +1,5 @@
 import { ENV } from '../../config/env.js';
-import { classifyWithGemini } from './gemini.js';
+import { classifyWithGemini, compareEvidenceWithGemini } from './gemini.js';
 import { classifyWithAnthropic } from './anthropic.js';
 
 export async function classifyImage(fileBuffer, mimeType = 'image/jpeg') {
@@ -51,6 +51,15 @@ export async function compareCollectionEvidence(
             shortReason: 'Could not retrieve original incident photo for comparison. Manual operator inspection required.',
             provider: 'gemini',
           };
+        }
+      }
+
+      if (typeof afterBuffer === 'string' && afterBuffer.startsWith('http')) {
+        const fetchRes = await fetch(afterBuffer);
+        if (fetchRes.ok) {
+          const arrayBuf = await fetchRes.arrayBuffer();
+          afterBuffer = Buffer.from(arrayBuf);
+          afterMime = fetchRes.headers.get('content-type') || afterMime;
         }
       }
 

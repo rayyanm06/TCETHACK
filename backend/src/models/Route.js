@@ -113,6 +113,7 @@ const routeSchema = new mongoose.Schema(
     },
     planHistory: { type: [Object], default: [] },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    isSeed: { type: Boolean, default: false, index: true },
   },
   { timestamps: true }
 );

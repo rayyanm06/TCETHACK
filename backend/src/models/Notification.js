@@ -77,6 +77,11 @@ const notificationSchema = new mongoose.Schema(
       default: false,
       index: true,
     },
+    isSeed: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
     dedupKey: {
       type: String,
       required: true,
@@ -89,4 +94,8 @@ const notificationSchema = new mongoose.Schema(
   }
 );
 
+// TTL index to auto-delete notifications older than 7 days (604800 seconds) for non-seed records
+notificationSchema.index({ createdAt: 1 }, { expireAfterSeconds: 604800, partialFilterExpression: { isSeed: false } });
+
 export const Notification = mongoose.model('Notification', notificationSchema);
+

@@ -1,7 +1,7 @@
 import React from 'react';
 
 interface CivicCitySceneProps {
-  phase: 'idle' | 'authenticating' | 'confirmed' | 'transforming' | 'truck_entering' | 'collecting' | 'driving_away' | 'revealing_dashboard';
+  phase: 'idle' | 'authenticating' | 'confirmed' | 'transforming' | 'truck_entering' | 'collecting' | 'turning' | 'driving_away' | 'revealing_dashboard';
   className?: string;
 }
 

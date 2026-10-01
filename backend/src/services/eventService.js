@@ -12,6 +12,7 @@ import { withTransaction } from '../utils/transaction.js';
 import { CREDIT_VALUES, TRANSACTION_STATUSES, TRANSACTION_TYPES } from '../engines/impact.js';
 import { computeHotspotBlocks } from '../data/hotspotBlocks.js';
 import { createCitizenNotification } from './notificationService.js';
+import { compareCollectionEvidence } from '../adapters/vision/index.js';
 
 function validateImageBuffer(buffer) {
   if (!buffer || buffer.length < 12) return false;
@@ -56,6 +57,9 @@ export async function getPublicEvents(query = {}) {
 
 export async function getOperatorEvents(query = {}) {
   const filter = {};
+  if (query.includeSeed !== 'true') {
+    filter.isSeed = { $ne: true };
+  }
 
   // Status filter
   if (query.status && query.status !== 'all') {
@@ -135,10 +139,10 @@ export async function getOperatorEvents(query = {}) {
     };
   });
 
-  // Accurate real records ticker counts
-  const totalReports = await Report.countDocuments();
-  const totalEvents = await WasteEvent.countDocuments({ status: { $ne: 'REJECTED' } });
-  const activeRoutes = await Route.find({ status: { $in: ['ASSIGNED', 'IN_PROGRESS'] } }).lean();
+  // Accurate real records ticker counts (strictly excluding seed data)
+  const totalReports = await Report.countDocuments({ isSeed: { $ne: true } });
+  const totalEvents = await WasteEvent.countDocuments({ status: { $ne: 'REJECTED' }, isSeed: { $ne: true } });
+  const activeRoutes = await Route.find({ status: { $in: ['ASSIGNED', 'IN_PROGRESS'] }, isSeed: { $ne: true } }).lean();
   let plannedStops = 0;
   for (const r of activeRoutes) {
     plannedStops += (r.stops || []).filter((s) => s.state === 'PENDING').length;
@@ -146,6 +150,7 @@ export async function getOperatorEvents(query = {}) {
 
   const pendingSpecialist = await WasteEvent.countDocuments({
     status: { $in: ['SUBMITTED', 'VERIFIED'] },
+    isSeed: { $ne: true },
     $or: [
       { reportType: 'HOUSEHOLD' },
       { category: 'E_WASTE' },
@@ -157,6 +162,7 @@ export async function getOperatorEvents(query = {}) {
   const allActiveForBlocks = await WasteEvent.find({
     status: { $in: ['SUBMITTED', 'VERIFIED', 'SCHEDULED'] },
     reportType: { $ne: 'HOUSEHOLD' },
+    isSeed: { $ne: true },
   }).lean();
   const blocks = computeHotspotBlocks(allActiveForBlocks);
 
@@ -176,6 +182,7 @@ export async function getHotspotBlocksOverview() {
   const allActiveForBlocks = await WasteEvent.find({
     status: { $in: ['SUBMITTED', 'VERIFIED', 'SCHEDULED'] },
     reportType: { $ne: 'HOUSEHOLD' },
+    isSeed: { $ne: true },
   }).lean();
   return { blocks: computeHotspotBlocks(allActiveForBlocks) };
 }
@@ -668,6 +675,37 @@ export async function resolveOperatorEvent(eventId, data, userId) {
     }
   }
 
+  // Server-side AI review verification (never trust client input)
+  let serverAiReview = null;
+  const primaryReport = await Report.findById(event.primaryReportId).lean();
+  if (primaryReport?.imageUrl && evidence?.imageUrl) {
+    try {
+      serverAiReview = await compareCollectionEvidence(
+        primaryReport.imageUrl,
+        'image/jpeg',
+        evidence.imageUrl,
+        evidence.mimeType || 'image/jpeg'
+      );
+    } catch (aiErr) {
+      console.warn('[resolveOperatorEvent] AI review error:', aiErr.message);
+      serverAiReview = {
+        status: 'UNAVAILABLE',
+        assessment: 'UNABLE_TO_ASSESS',
+        confidence: null,
+        shortReason: 'AI assessment service unavailable. Manual operator inspection verified.',
+        provider: 'none',
+      };
+    }
+  } else {
+    serverAiReview = {
+      status: 'UNAVAILABLE',
+      assessment: 'UNABLE_TO_ASSESS',
+      confidence: null,
+      shortReason: 'Before photo unavailable for AI comparison. Manual operator inspection verified.',
+      provider: 'none',
+    };
+  }
+
   return await withTransaction(async (session) => {
     const prevStatus = event.status;
     event.status = 'RESOLVED';
@@ -721,16 +759,34 @@ export async function resolveOperatorEvent(eventId, data, userId) {
         if (stop) {
           stop.state = 'DONE';
           stop.completedAt = new Date();
+          stop.completedBy = userId;
+          stop.completionPhotoUrl = evidence.imageUrl;
+          stop.completionPublicId = evidence.publicId;
+          stop.operatorNote = note || '';
+          if (serverAiReview) {
+            stop.aiReview = {
+              assessment: serverAiReview.assessment,
+              confidence: serverAiReview.confidence,
+              shortReason: serverAiReview.shortReason,
+              provider: serverAiReview.provider || 'gemini',
+            };
+          }
         }
 
-        const pendingCount = route.stops.filter((s) => s.state === 'PENDING').length;
-        if (pendingCount === 0) {
+        // Advance next pending stop to EN_ROUTE
+        const nextStop = route.stops.find((s) => s.state === 'PENDING');
+        if (nextStop) {
+          nextStop.state = 'EN_ROUTE';
+        }
+
+        const remainingStops = route.stops.filter((s) => s.state !== 'DONE' && s.state !== 'SKIPPED');
+        if (remainingStops.length === 0) {
           route.status = 'COMPLETED';
         } else if (route.status === 'ASSIGNED') {
           route.status = 'IN_PROGRESS';
         }
         await route.save({ session });
-        routeUpdate = { id: route._id.toString(), status: route.status, remainingStops: pendingCount };
+        routeUpdate = { id: route._id.toString(), status: route.status, remainingStops: remainingStops.length };
       }
     }
 
@@ -809,7 +865,7 @@ export async function resolveOperatorEvent(eventId, data, userId) {
       });
     }
 
-    return { event, route: routeUpdate };
+    return { event, route: routeUpdate, aiReview: serverAiReview };
   });
 }
 

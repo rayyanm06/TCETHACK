@@ -19,22 +19,33 @@ export async function registerUser({ name, email, password }) {
 
   const normalizedEmail = email.toLowerCase().trim();
   const existing = await User.findOne({ email: normalizedEmail });
-  if (existing) {
-    const err = new Error('An account with this email address already exists.');
-    err.status = 409;
-    err.code = 'EMAIL_TAKEN';
-    throw err;
-  }
 
   const salt = await bcrypt.genSalt(10);
   const passwordHash = await bcrypt.hash(password, salt);
 
-  const user = await User.create({
-    name: name.trim(),
-    email: normalizedEmail,
-    passwordHash,
-    role: 'CITIZEN', // Public registration is always CITIZEN
-  });
+  let user;
+
+  if (existing) {
+    // If account exists from Firebase sync with no password, allow re-registration
+    if (!existing.passwordHash) {
+      existing.passwordHash = passwordHash;
+      existing.name = name.trim();
+      await existing.save();
+      user = existing;
+    } else {
+      const err = new Error('An account with this email address already exists.');
+      err.status = 409;
+      err.code = 'EMAIL_TAKEN';
+      throw err;
+    }
+  } else {
+    user = await User.create({
+      name: name.trim(),
+      email: normalizedEmail,
+      passwordHash,
+      role: 'CITIZEN', // Public registration is always CITIZEN
+    });
+  }
 
   const token = signToken(user);
 
@@ -66,12 +77,20 @@ export async function loginUser({ email, password }) {
     throw err;
   }
 
-  const isMatch = await bcrypt.compare(password, user.passwordHash);
-  if (!isMatch) {
-    const err = new Error('Email or password did not match.');
-    err.status = 401;
-    err.code = 'INVALID_CREDENTIALS';
-    throw err;
+  // Handle accounts created via Firebase sync (no passwordHash stored)
+  // On first backend login, set the provided password as their hash
+  if (!user.passwordHash) {
+    const salt = await bcrypt.genSalt(10);
+    user.passwordHash = await bcrypt.hash(password, salt);
+    await user.save();
+  } else {
+    const isMatch = await bcrypt.compare(password, user.passwordHash);
+    if (!isMatch) {
+      const err = new Error('Email or password did not match.');
+      err.status = 401;
+      err.code = 'INVALID_CREDENTIALS';
+      throw err;
+    }
   }
 
   const token = signToken(user);

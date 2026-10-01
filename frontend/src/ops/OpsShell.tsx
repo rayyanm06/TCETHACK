@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../lib/auth.tsx';
 import { api } from '../lib/api.ts';
@@ -64,6 +64,7 @@ export const OpsShell: React.FC = () => {
     accuracyM: number;
     isLive: boolean;
   } | null>(null);
+  const [routePanelMode, setRoutePanelMode] = useState<'LIVE' | 'PREVIEW'>('LIVE');
   const [congestionZones, setCongestionZones] = useState<CongestionZone[]>([]);
 
   // Forecast state
@@ -113,6 +114,43 @@ export const OpsShell: React.FC = () => {
 
   // Live Route & Vehicle Simulation Controller
   const simulation = useRouteSimulation(activeRoute, events);
+
+  // Operational vs Preview Telemetry: Never fall back to simulated vehicle in LIVE mode
+  const truckPosition = useMemo((): [number, number] | null => {
+    if (routePanelMode === 'PREVIEW') {
+      return simulation.truckPosition;
+    }
+    if (liveTelemetry?.isLive) {
+      return [liveTelemetry.lat, liveTelemetry.lng];
+    }
+    if (activeRoute?.liveTracking?.lat && activeRoute?.liveTracking?.lng) {
+      return [activeRoute.liveTracking.lat, activeRoute.liveTracking.lng];
+    }
+    return null;
+  }, [routePanelMode, simulation.truckPosition, liveTelemetry, activeRoute?.liveTracking]);
+
+  const truckHeading = useMemo((): number => {
+    if (routePanelMode === 'PREVIEW') {
+      return simulation.truckHeading;
+    }
+    if (liveTelemetry?.isLive) {
+      return liveTelemetry.heading;
+    }
+    if (activeRoute?.liveTracking?.heading != null) {
+      return activeRoute.liveTracking.heading;
+    }
+    return 0;
+  }, [routePanelMode, simulation.truckHeading, liveTelemetry, activeRoute?.liveTracking]);
+
+  const isTruckMoving = useMemo((): boolean => {
+    if (routePanelMode === 'PREVIEW') {
+      return simulation.isPlaying;
+    }
+    if (liveTelemetry?.isLive) {
+      return Boolean((liveTelemetry as any).speedKmH && (liveTelemetry as any).speedKmH > 1);
+    }
+    return false;
+  }, [routePanelMode, simulation.isPlaying, liveTelemetry]);
 
   // Geographic Quick Jump Targets
   const quickJumpTargets = [
@@ -253,23 +291,14 @@ export const OpsShell: React.FC = () => {
               ...Array.from(simulation.completedStopIds),
             ])
           }
-          truckPosition={
-            liveTelemetry?.isLive
-              ? [liveTelemetry.lat, liveTelemetry.lng]
-              : simulation.truckPosition
-          }
-          truckHeading={
-            liveTelemetry?.isLive ? liveTelemetry.heading : simulation.truckHeading
-          }
-          isTruckMoving={liveTelemetry?.isLive ? true : simulation.isPlaying}
+          truckPosition={truckPosition}
+          truckHeading={truckHeading}
+          isTruckMoving={isTruckMoving}
           onSelectTruck={() => {
-            const pos = liveTelemetry?.isLive
-              ? [liveTelemetry.lat, liveTelemetry.lng]
-              : simulation.truckPosition;
-            if (pos) {
+            if (truckPosition) {
               setFocusLocation({
-                lat: pos[0],
-                lng: pos[1],
+                lat: truckPosition[0],
+                lng: truckPosition[1],
                 zoom: 16,
               });
             }
@@ -292,15 +321,13 @@ export const OpsShell: React.FC = () => {
               setActiveRoute(updated);
               fetchEventsData();
             }}
+            onModeChange={setRoutePanelMode}
             onLiveTelemetry={setLiveTelemetry}
             onFocusTruck={() => {
-              const pos = liveTelemetry?.isLive
-                ? [liveTelemetry.lat, liveTelemetry.lng]
-                : simulation.truckPosition;
-              if (pos) {
+              if (truckPosition) {
                 setFocusLocation({
-                  lat: pos[0],
-                  lng: pos[1],
+                  lat: truckPosition[0],
+                  lng: truckPosition[1],
                   zoom: 16,
                 });
               }

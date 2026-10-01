@@ -413,8 +413,8 @@ export const CityMap: React.FC<CityMapProps> = ({
     const truckLayer = truckLayerRef.current;
     if (!truckLayer) return;
 
-    if (route && (truckPosition || (route.geometry && route.geometry.length > 0))) {
-      const pos = truckPosition || route.geometry[0];
+    if (route && truckPosition) {
+      const pos = truckPosition;
       if (pos) {
         const vehicleName = route.vehicle?.name || 'MH-02-PILOT-01';
 
