@@ -163,15 +163,15 @@ export const ReportWaste: React.FC = () => {
       return;
     }
 
-    // Client-side bounding box verification
-    const [minLng, minLat, maxLng, maxLat] = [72.84, 19.18, 72.91, 19.24];
+    // Client-side bounding box verification (Greater Mumbai)
+    const [minLng, minLat, maxLng, maxLat] = [72.75, 18.85, 73.05, 19.35];
     if (
       location.lng < minLng ||
       location.lng > maxLng ||
       location.lat < minLat ||
       location.lat > maxLat
     ) {
-      setError('Selected coordinates are outside the rectangular pilot service area (Kandivali East / Borivali East).');
+      setError('Selected coordinates are outside the Greater Mumbai municipal service area.');
       return;
     }
 
@@ -648,7 +648,7 @@ export const ReportWaste: React.FC = () => {
                   isAddressManuallyEditedRef.current = true;
                   setAddressText(e.target.value);
                 }}
-                placeholder="e.g. Thakur Complex Main Road, Kandivali East"
+                placeholder="e.g. Linking Road, Bandra West or SV Road, Andheri"
                 className="w-full px-3 py-2 rounded-card border border-line text-xs bg-surface text-ink focus:outline-none focus:ring-1 focus:ring-lagoon"
               />
             </div>

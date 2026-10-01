@@ -34,8 +34,8 @@ export const CityMap: React.FC<CityMapProps> = ({
   historyCells = [],
   height = '100%',
   interactive = true,
-  center = [19.2071, 72.876],
-  zoom = 14,
+  center = [19.0760, 72.8777],
+  zoom = 11,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
@@ -93,12 +93,12 @@ export const CityMap: React.FC<CityMapProps> = ({
 
     layers.clearLayers();
 
-    // 1. Draw Service Area Boundary (illustrative dashed outline)
+    // 1. Draw Service Area Boundary (Greater Mumbai municipal boundary)
     const serviceAreaBbox: [number, number][] = [
-      [19.18, 72.84],
-      [19.24, 72.84],
-      [19.24, 72.91],
-      [19.18, 72.91],
+      [18.85, 72.75],
+      [19.35, 72.75],
+      [19.35, 73.05],
+      [18.85, 73.05],
     ];
     L.polygon(serviceAreaBbox, {
       color: '#2E6B4E',

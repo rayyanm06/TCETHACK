@@ -187,7 +187,7 @@ export async function createPrimaryReport(data, userId) {
   // 3. Verify coordinates inside rectangular service area
   const coord = { lat: Number(location?.lat), lng: Number(location?.lng) };
   if (!isInsideBoundingBox(coord, THRESHOLDS.SERVICE_AREA_BBOX)) {
-    const err = new Error('This location is outside the rectangular pilot service area (Kandivali East / Borivali East).');
+    const err = new Error('This location is outside the municipal service area (Greater Mumbai).');
     err.status = 400;
     err.code = 'OUTSIDE_SERVICE_AREA';
     throw err;

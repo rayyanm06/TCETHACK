@@ -240,7 +240,7 @@ export const Login: React.FC = () => {
             Smart Waste Reporting & Municipal Collection Planning
           </h1>
           <p className="mt-0.5 text-[10px] sm:text-[11px] text-[#53615B] max-w-xs sm:max-w-sm mx-auto">
-            Kandivali East & Borivali East Pilot · Operations System
+            Greater Mumbai Operations · Municipal Operations System
           </p>
         </header>
 
@@ -494,7 +494,7 @@ export const Login: React.FC = () => {
             isTransitioning ? 'opacity-0 pointer-events-none' : 'opacity-100'
           }`}
         >
-          <span>PS03 Research & Evaluation Pilot · Kandivali East & Borivali East Study Sector</span>
+          <span>PS03 Research & Evaluation Pilot · Greater Mumbai Municipal Service Sector</span>
         </footer>
       </div>
 

@@ -13,8 +13,8 @@ interface CitizenLocationPickerProps {
   serviceAreaBbox?: [number, number, number, number]; // [minLng, minLat, maxLng, maxLat]
 }
 
-// Bounding box for Kandivali/Borivali East pilot: [minLng, minLat, maxLng, maxLat]
-const DEFAULT_BBOX: [number, number, number, number] = [72.84, 19.18, 72.91, 19.24];
+// Bounding box covering Greater Mumbai: [minLng, minLat, maxLng, maxLat]
+const DEFAULT_BBOX: [number, number, number, number] = [72.75, 18.85, 73.05, 19.35];
 
 function isInsideBbox(lat: number, lng: number, bbox: [number, number, number, number]): boolean {
   const [minLng, minLat, maxLng, maxLat] = bbox;
@@ -39,17 +39,18 @@ export const CitizenLocationPicker: React.FC<CitizenLocationPickerProps> = ({
   const [geocoding, setGeocoding] = useState(false);
   const [resolvedAddress, setResolvedAddress] = useState<string | null>(null);
 
-  // Pilot area reference center (Thakur Complex, Kandivali East)
-  const defaultCenter: [number, number] = [19.2071, 72.876];
+  // Reference center of Greater Mumbai
+  const defaultCenter: [number, number] = [19.0760, 72.8777];
 
   // Initialize Leaflet map
   useEffect(() => {
     if (!mapContainerRef.current || mapInstanceRef.current) return;
 
     const initialCenter = location ? [location.lat, location.lng] : defaultCenter;
+    const initialZoom = location ? 15 : 11;
     const map = L.map(mapContainerRef.current, {
       center: initialCenter as [number, number],
-      zoom: 15,
+      zoom: initialZoom,
       zoomControl: true,
       touchZoom: true,
       scrollWheelZoom: true,
@@ -61,7 +62,7 @@ export const CitizenLocationPicker: React.FC<CitizenLocationPickerProps> = ({
 
     L.tileLayer(tileUrl, { attribution, maxZoom: 19 }).addTo(map);
 
-    // Draw honest rectangular pilot boundary polygon
+    // Draw municipal service boundary polygon
     const [minLng, minLat, maxLng, maxLat] = serviceAreaBbox;
     const bboxPolygon: [number, number][] = [
       [minLat, minLng],
@@ -75,9 +76,9 @@ export const CitizenLocationPicker: React.FC<CitizenLocationPickerProps> = ({
       weight: 2,
       dashArray: '5, 5',
       fillColor: '#2E6B4E',
-      fillOpacity: 0.05,
+      fillOpacity: 0.04,
     })
-      .bindTooltip('Kandivali East Pilot Boundary (Rectangular Service Area)', {
+      .bindTooltip('Greater Mumbai Municipal Service Boundary', {
         permanent: false,
         direction: 'center',
       })
@@ -333,13 +334,13 @@ export const CitizenLocationPicker: React.FC<CitizenLocationPickerProps> = ({
                 isInside ? 'bg-moss text-surface' : 'bg-clay text-surface'
               }`}
             >
-              {isInside ? 'Inside Pilot Boundary' : 'Outside Pilot Area'}
+              {isInside ? 'Inside Mumbai Service Area' : 'Outside Mumbai Area'}
             </span>
           </div>
 
           {!isInside && (
             <p className="text-[11px] text-clay font-medium px-1">
-              Warning: This pin is outside the Kandivali East / Borivali East rectangular pilot boundary. You must move the pin inside the boundary box to submit.
+              Warning: This pin is outside the Greater Mumbai municipal service boundary. You must place the pin within Mumbai to submit.
             </p>
           )}
         </div>

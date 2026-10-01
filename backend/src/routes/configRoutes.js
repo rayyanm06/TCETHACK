@@ -17,7 +17,7 @@ router.get('/config', (req, res) => {
     categories: THRESHOLDS.CATEGORIES,
     categoryLabels: THRESHOLDS.CATEGORY_LABELS,
     serviceAreaBbox: THRESHOLDS.SERVICE_AREA_BBOX,
-    serviceAreaDescription: 'Rectangular pilot service area: Kandivali East / Borivali East pilot zone (72.84°E to 72.91°E, 19.18°N to 19.24°N)',
+    serviceAreaDescription: 'Municipal service area: Greater Mumbai Metropolitan Zone (72.75°E to 73.05°E, 18.85°N to 19.35°N)',
     creditValues: THRESHOLDS.CREDIT_VALUES,
     features: {
       simulatedTraffic: true,

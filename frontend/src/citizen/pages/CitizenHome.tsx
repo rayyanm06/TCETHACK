@@ -75,7 +75,7 @@ export const CitizenHome: React.FC = () => {
           Good day, {firstName}
         </h1>
         <p className="text-xs sm:text-sm text-ink-3 mt-1">
-          Kandivali East Pilot · Waste reporting and collection coordination.
+          Greater Mumbai Operations · Waste reporting and collection coordination.
         </p>
       </div>
 
@@ -206,7 +206,7 @@ export const CitizenHome: React.FC = () => {
               Public Cleanups in Pilot Area
             </h3>
             <p className="text-[11px] text-ink-3">
-              Kandivali East / Borivali East sector · Active public incident reports undergoing municipal coordination.
+              Greater Mumbai sector · Active public incident reports undergoing municipal coordination.
             </p>
           </div>
           <span className="text-xs font-mono font-semibold text-ink-2 bg-surface-2 px-2 py-1 rounded border border-line">

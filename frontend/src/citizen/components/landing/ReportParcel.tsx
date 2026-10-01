@@ -39,7 +39,7 @@ export const ReportParcel: React.FC<ReportParcelProps> = ({
           <CheckCircle2 className="w-3 h-3 text-[#236B4F] shrink-0" />
         </div>
         <p className="text-[9px] font-mono text-[#53615B] truncate">
-          PILOT · KANDIVALI E · READY
+          MUNICIPAL · MUMBAI · READY
         </p>
       </div>
 
